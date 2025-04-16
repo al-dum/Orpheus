@@ -14,7 +14,7 @@ public class SpotifyUserData {
 
     public static void main(String[] args) {
         // Start a local server for OAuth callback
-        Spark.port(8080);
+        Spark.port(9090);
 
         // Step 1: Generate Spotify Auth URL
         String authUrl = "https://accounts.spotify.com/authorize?" +
