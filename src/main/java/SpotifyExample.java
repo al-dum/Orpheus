@@ -5,7 +5,7 @@ import java.util.Base64;
 
 public class SpotifyExample {
     private static final String CLIENT_ID = "0e003a2eb0a7493c86917c5bc3eb5297"; // Replace with yours!
-    private static final String CLIENT_SECRET = "70e4f66551b84356aad1105e620e6933"; // Replace!
+    private static final String CLIENT_SECRET = "70e4f66551b84356aad1105e620e6933"; // Replace with own key!
     private static final OkHttpClient client = new OkHttpClient();
 
     public static void main(String[] args) throws IOException {

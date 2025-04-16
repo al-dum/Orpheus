@@ -28,13 +28,28 @@
             <artifactId>json</artifactId>
             <version>20230227</version>
         </dependency>
+
+        <!-- Gson para trabajar con JSON -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.10.1</version>
+        </dependency>
+
+        <!-- Spark Framework para manejar rutas y servidores -->
+        <dependency>
+            <groupId>com.sparkjava</groupId>
+            <artifactId>spark-core</artifactId>
+            <version>2.9.4</version>
+        </dependency>
     </dependencies>
 
+
     <repositories>
-           <repository>
-               <id>central</id>
-               <url>https://repo.maven.apache.org/maven2</url>
-           </repository>
-       </repositories>
+        <repository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </repository>
+    </repositories>
 
 </project>
