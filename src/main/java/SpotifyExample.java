@@ -13,8 +13,8 @@ public class SpotifyExample {
         String accessToken = getAccessToken();
         System.out.println("Access Token: " + accessToken);
 
-        // Step 2: Get Track Info (Example: "Blinding Lights" by The Weeknd)
-        String trackId = "6rqhFgbbKwnb9MLmUQDhG6";
+        // Step 2: Get Track Info (Example: "OLYMPIAN" by Playboi Carti)
+        String trackId = "3Z8FwOEN59mRMxDCtb8N0A"; // Cambiado a "OLYMPIAN"
         String trackInfo = getTrackInfo(trackId, accessToken);
 
         // Step 3: Parse JSON Response
