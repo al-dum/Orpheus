@@ -12,7 +12,7 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <exec.mainClass>OrpheusTUI</exec.mainClass> <!-- cambia esto si tu clase main está en un paquete -->
+        <javafx.version>20.0.2</javafx.version>
     </properties>
 
     <dependencies>
@@ -30,54 +30,86 @@
             <version>20230227</version>
         </dependency>
 
-        <!-- Gson para trabajar con JSON -->
+        <!-- Gson for JSON processing -->
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
             <version>2.10.1</version>
         </dependency>
 
-        <!-- Spark Framework para manejar rutas y servidores -->
+        <!-- Spark Framework for routing and servers -->
         <dependency>
             <groupId>com.sparkjava</groupId>
             <artifactId>spark-core</artifactId>
             <version>2.9.4</version>
         </dependency>
 
-        <!-- SLF4J Simple Logger (para evitar el error del StaticLoggerBinder) -->
+        <!-- SLF4J + Logback binding for logging -->
         <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
-            <version>2.0.9</version>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.2.11</version>
         </dependency>
 
         <!-- JavaFX -->
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>17.0.2</version>
+            <version>${javafx.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.openjfx</groupId>
-            <artifactId>javafx-fxml</artifactId>
-            <version>17.0.2</version>
+            <artifactId>javafx-base</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-graphics</artifactId>
+            <version>${javafx.version}</version>
         </dependency>
     </dependencies>
 
     <build>
         <plugins>
-            <!-- Plugin para ejecutar JavaFX desde Maven -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.8.1</version>
+                <configuration>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
                 <version>0.0.8</version>
                 <configuration>
-                    <mainClass>${exec.mainClass}</mainClass>
+                    <mainClass>OrpheusTUI</mainClass>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>OrpheusTUI</mainClass>
+                    <arguments>
+                        <argument>--module-path</argument>
+                        <argument>${project.build.directory}/modules</argument>
+                        <argument>--add-modules</argument>
+                        <argument>javafx.controls,javafx.base,javafx.graphics</argument>
+                    </arguments>
                 </configuration>
             </plugin>
         </plugins>
+
+
     </build>
+
+
+
 
     <repositories>
         <repository>
@@ -85,5 +117,4 @@
             <url>https://repo.maven.apache.org/maven2</url>
         </repository>
     </repositories>
-
 </project>
