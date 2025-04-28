@@ -1,3 +1,4 @@
+import java.util.Scanner;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -5,25 +6,55 @@ import javafx.scene.control.TextArea;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import okhttp3.*;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.google.gson.*;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 
 public class OrpheusTUI extends Application {
     private static final String CLIENT_ID = "0e003a2eb0a7493c86917c5bc3eb5297";
     private static final String CLIENT_SECRET = "70e4f66551b84356aad1105e620e6933";
-    private static final String REDIRECT_URI = "http://localhost:8080/callback";
+    private static final String REDIRECT_URI = "https://sites.google.com/view/orpheus-app/p%C3%A1gina-principal";
     private static final OkHttpClient client = new OkHttpClient();
 
     private String accessToken;
 
+    public void login(){}
+
     public static void main(String[] args) {
         launch(args);
-    }
 
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("Opciones:");
+        System.out.println("1. Añadir canción a biblioteca");
+        System.out.println("2. Ver perfil");
+        int option = scanner.nextInt();
+
+        switch (option) {
+            case 1:
+                System.out.println("Introduce el ID de la canción:");
+                String trackId = scanner.next();
+                try {
+                    addTrackToLibrary(trackId, accessToken);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                break;
+            case 2:
+                try {
+                    String profile = getUserProfile(accessToken);
+                    System.out.println("Perfil de usuario:\n" + profile);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                break;
+            default:
+                System.out.println("Opción no válida.");
+        }
+    }
 
     @Override
     public void start(Stage primaryStage) {
@@ -34,29 +65,51 @@ public class OrpheusTUI extends Application {
         resultArea.setEditable(false);
 
         loginButton.setOnAction(event -> {
+            String scope = URLEncoder.encode("user-top-read user-read-recently-played", StandardCharsets.UTF_8);
             String authUrl = "https://accounts.spotify.com/authorize?" +
                     "client_id=" + CLIENT_ID +
                     "&response_type=code" +
-                    "&redirect_uri=" + REDIRECT_URI +
-                    "&scope=user-top-read user-read-recently-played";
+                    "&redirect_uri=" + URLEncoder.encode(REDIRECT_URI, StandardCharsets.UTF_8) +
+                    "&scope=" + scope;
 
             // Abre el navegador para iniciar sesión
             getHostServices().showDocument(authUrl);
 
             // Inicia un servidor para manejar el callback
             spark.Spark.get("/callback", (req, res) -> {
+                System.out.println("Callback recibido con parámetros: " + req.queryParams());
                 String authCode = req.queryParams("code");
                 if (authCode != null) {
+                    System.out.println("Código de autorización recibido: " + authCode);
                     try {
                         accessToken = getAccessToken(authCode);
-                        String topTracks = getTopTracks(accessToken);
-                        resultArea.setText("Tus canciones principales:\n" + topTracks);
+                        System.out.println("Access token: " + accessToken);
+                        String topTracksJson = getTopTracks(accessToken);
+                        System.out.println("Top tracks JSON:\n" + topTracksJson);
+
+                        // Parsear y mostrar los nombres de las canciones
+                        JsonObject json = JsonParser.parseString(topTracksJson).getAsJsonObject();
+                        JsonArray tracks = json.getAsJsonArray("items");
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("Tus canciones principales:\n\n");
+                        for (JsonElement trackElement : tracks) {
+                            JsonObject track = trackElement.getAsJsonObject();
+                            String name = track.get("name").getAsString();
+                            sb.append("- ").append(name).append("\n");
+                        }
+                        System.out.println(sb.toString());
+                        resultArea.setText(sb.toString());
+
                     } catch (IOException e) {
                         resultArea.setText("Error al obtener datos: " + e.getMessage());
+                        e.printStackTrace();
                     }
+                } else {
+                    System.out.println("No se recibió el código de autorización");
                 }
                 return "Puedes cerrar esta ventana.";
             });
+            spark.Spark.init();
         });
 
         VBox layout = new VBox(10, loginButton, resultArea);
@@ -64,6 +117,8 @@ public class OrpheusTUI extends Application {
         primaryStage.setScene(scene);
         primaryStage.show();
     }
+
+
 
     private String getAccessToken(String authCode) throws IOException {
         String credentials = CLIENT_ID + ":" + CLIENT_SECRET;
@@ -88,6 +143,9 @@ public class OrpheusTUI extends Application {
         }
     }
 
+
+
+
     private String getTopTracks(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url("https://api.spotify.com/v1/me/top/tracks?limit=10")
@@ -98,4 +156,70 @@ public class OrpheusTUI extends Application {
             return response.body().string();
         }
     }
+
+    private void addTrackToLibrary(String trackId, String accessToken) throws IOException {
+        RequestBody body = RequestBody.create("", null); // Cuerpo vacío para esta solicitud
+        Request request = new Request.Builder()
+                .url("https://api.spotify.com/v1/me/tracks?ids=" + trackId)
+                .header("Authorization", "Bearer " + accessToken)
+                .put(body)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (response.isSuccessful()) {
+                System.out.println("Canción añadida a tu biblioteca.");
+            } else {
+                System.out.println("Error al añadir canción: " + response.body().string());
+            }
+        }
+    }
+
+    private String getUserProfile(String accessToken) throws IOException {
+        Request request = new Request.Builder()
+                .url("https://api.spotify.com/v1/me")
+                .header("Authorization", "Bearer " + accessToken)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (response.isSuccessful()) {
+                return response.body().string();
+            } else {
+                throw new IOException("Error al obtener perfil: " + response.body().string());
+            }
+        }
+    }
+
+    private String getRecentlyPlayedTracks(String accessToken) throws IOException {
+        Request request = new Request.Builder()
+                .url("https://api.spotify.com/v1/me/player/recently-played?limit=10")
+                .header("Authorization", "Bearer " + accessToken)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            return response.body().string();
+        }
+    }
+
+    private void initializeButtons() {
+        Button addTrackButton = new Button("Añadir canción a biblioteca");
+        addTrackButton.setOnAction(event -> {
+            try {
+                addTrackToLibrary("track_id_aquí", accessToken); // Reemplaza con un ID válido
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+
+        Button profileButton = new Button("Ver perfil");
+        profileButton.setOnAction(event -> {
+            try {
+                String profile = getUserProfile(accessToken);
+                System.out.println("Perfil de usuario:\n" + profile);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+
 }
