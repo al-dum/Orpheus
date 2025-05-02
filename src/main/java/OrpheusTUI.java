@@ -7,24 +7,24 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import okhttp3.*;
 import com.google.gson.*;
-
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-
-
+import com.orpheus.mssql.conexion.ConexionBD;
+import java.sql.Connection;
 public class OrpheusTUI extends Application {
     private static final String CLIENT_ID = "0e003a2eb0a7493c86917c5bc3eb5297";
     private static final String CLIENT_SECRET = "70e4f66551b84356aad1105e620e6933";
     private static final String REDIRECT_URI = "https://sites.google.com/view/orpheus-app/p%C3%A1gina-principal";
     private static final OkHttpClient client = new OkHttpClient();
 
-    private String accessToken;
+    private static String accessToken;
 
-    public void login(){}
+    //public void login(){}
 
     public static void main(String[] args) {
+        System.out.printf("Iniciando aplicación...\n");
         launch(args);
 
         Scanner scanner = new Scanner(System.in);
@@ -63,6 +63,34 @@ public class OrpheusTUI extends Application {
         Button loginButton = new Button("Iniciar sesión en Spotify");
         TextArea resultArea = new TextArea();
         resultArea.setEditable(false);
+
+        Button addTrackButton = new Button("Añadir canción a biblioteca");
+        Button profileButton = new Button("Ver perfil");
+
+        addTrackButton.setOnAction(event -> {
+            javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog();
+            dialog.setTitle("Añadir canción");
+            dialog.setHeaderText("Introduce el nombre de la canción");
+            dialog.setContentText("Nombre:");
+            dialog.showAndWait().ifPresent(songName -> {
+                try {
+                    String trackId = searchTrackIdByName(songName, accessToken);
+                    addTrackToLibrary(trackId, accessToken);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+        });
+
+        profileButton.setOnAction(event -> {
+            try {
+                String profile = getUserProfile(accessToken);
+                resultArea.setText("Perfil de usuario:\n" + profile);
+            } catch (IOException e) {
+                e.printStackTrace();
+                resultArea.setText("Error al obtener perfil.");
+            }
+        });
 
         loginButton.setOnAction(event -> {
             String scope = URLEncoder.encode("user-top-read user-read-recently-played", StandardCharsets.UTF_8);
@@ -112,7 +140,7 @@ public class OrpheusTUI extends Application {
             spark.Spark.init();
         });
 
-        VBox layout = new VBox(10, loginButton, resultArea);
+        VBox layout = new VBox(10, loginButton, addTrackButton, profileButton, resultArea);
         Scene scene = new Scene(layout, 400, 300);
         primaryStage.setScene(scene);
         primaryStage.show();
@@ -144,6 +172,30 @@ public class OrpheusTUI extends Application {
     }
 
 
+    private String searchTrackIdByName(String query, String accessToken) throws IOException {
+        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
+        String url = "https://api.spotify.com/v1/search?q=" + encodedQuery + "&type=track&limit=1";
+
+        Request request = new Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer " + accessToken)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Error al buscar canción: " + response.body().string());
+            }
+            String jsonResponse = response.body().string();
+            JsonObject json = JsonParser.parseString(jsonResponse).getAsJsonObject();
+            JsonArray items = json.getAsJsonObject("tracks").getAsJsonArray("items");
+            if (items.size() > 0) {
+                JsonObject firstTrack = items.get(0).getAsJsonObject();
+                return firstTrack.get("id").getAsString();
+            } else {
+                throw new IOException("No se encontraron resultados.");
+            }
+        }
+    }
 
 
     private String getTopTracks(String accessToken) throws IOException {
@@ -157,7 +209,7 @@ public class OrpheusTUI extends Application {
         }
     }
 
-    private void addTrackToLibrary(String trackId, String accessToken) throws IOException {
+    private static void addTrackToLibrary(String trackId, String accessToken) throws IOException {
         RequestBody body = RequestBody.create("", null); // Cuerpo vacío para esta solicitud
         Request request = new Request.Builder()
                 .url("https://api.spotify.com/v1/me/tracks?ids=" + trackId)
@@ -174,7 +226,7 @@ public class OrpheusTUI extends Application {
         }
     }
 
-    private String getUserProfile(String accessToken) throws IOException {
+    private static String getUserProfile(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url("https://api.spotify.com/v1/me")
                 .header("Authorization", "Bearer " + accessToken)
@@ -220,6 +272,4 @@ public class OrpheusTUI extends Application {
             }
         });
     }
-
-
 }
