@@ -11,8 +11,13 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import com.orpheus.mssql.conexion.ConexionBD;
-import java.sql.Connection;
+
+
+/**
+ * Interfaz gráfica de usuario para interactuar con la API de Spotify.
+ * Permite iniciar sesión, ver el perfil del usuario, buscar canciones por nombre y agregarlas a la biblioteca.
+ * También maneja la autorización OAuth2 y la comunicación con la API de Spotify.
+ */
 public class OrpheusTUI extends Application {
     private static final String CLIENT_ID = "0e003a2eb0a7493c86917c5bc3eb5297";
     private static final String CLIENT_SECRET = "70e4f66551b84356aad1105e620e6933";
@@ -23,6 +28,10 @@ public class OrpheusTUI extends Application {
 
     //public void login(){}
 
+    /**
+     * Método principal que lanza la aplicación JavaFX y ofrece opciones por consola para prueba.
+     * @param args Argumentos de la línea de comandos.
+     */
     public static void main(String[] args) {
         System.out.printf("Iniciando aplicación...\n");
         launch(args);
@@ -56,6 +65,11 @@ public class OrpheusTUI extends Application {
         }
     }
 
+    /**
+     * Inicializa la interfaz gráfica de usuario con botones para iniciar sesión,
+     * agregar canciones por nombre y ver el perfil del usuario.
+     * @param primaryStage Ventana principal de la aplicación.
+     */
     @Override
     public void start(Stage primaryStage) {
         primaryStage.setTitle("Spotify User Data");
@@ -148,6 +162,12 @@ public class OrpheusTUI extends Application {
 
 
 
+    /**
+     * Intercambia el código de autorización por un token de acceso usando OAuth2.
+     * @param authCode Código de autorización recibido tras el login.
+     * @return Token de acceso válido.
+     * @throws IOException Si ocurre un error de red o de respuesta.
+     */
     private String getAccessToken(String authCode) throws IOException {
         String credentials = CLIENT_ID + ":" + CLIENT_SECRET;
         String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
@@ -172,6 +192,13 @@ public class OrpheusTUI extends Application {
     }
 
 
+    /**
+     * Busca una canción por nombre en la API de Spotify y devuelve su ID.
+     * @param query Nombre de la canción.
+     * @param accessToken Token de acceso del usuario.
+     * @return ID de la primera canción encontrada.
+     * @throws IOException Si ocurre un error en la búsqueda.
+     */
     private String searchTrackIdByName(String query, String accessToken) throws IOException {
         String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
         String url = "https://api.spotify.com/v1/search?q=" + encodedQuery + "&type=track&limit=1";
@@ -198,6 +225,12 @@ public class OrpheusTUI extends Application {
     }
 
 
+    /**
+     * Obtiene las canciones más escuchadas del usuario.
+     * @param accessToken Token de acceso del usuario.
+     * @return JSON con las canciones más escuchadas.
+     * @throws IOException Si ocurre un error al hacer la solicitud.
+     */
     private String getTopTracks(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url("https://api.spotify.com/v1/me/top/tracks?limit=10")
@@ -209,6 +242,12 @@ public class OrpheusTUI extends Application {
         }
     }
 
+    /**
+     * Añade una canción a la biblioteca del usuario en Spotify.
+     * @param trackId ID de la canción a añadir.
+     * @param accessToken Token de acceso del usuario.
+     * @throws IOException Si ocurre un error al hacer la solicitud.
+     */
     private static void addTrackToLibrary(String trackId, String accessToken) throws IOException {
         RequestBody body = RequestBody.create("", null); // Cuerpo vacío para esta solicitud
         Request request = new Request.Builder()
@@ -226,6 +265,12 @@ public class OrpheusTUI extends Application {
         }
     }
 
+    /**
+     * Obtiene el perfil del usuario autenticado desde la API de Spotify.
+     * @param accessToken Token de acceso del usuario.
+     * @return JSON con información del perfil.
+     * @throws IOException Si ocurre un error en la solicitud.
+     */
     private static String getUserProfile(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url("https://api.spotify.com/v1/me")
@@ -241,6 +286,12 @@ public class OrpheusTUI extends Application {
         }
     }
 
+    /**
+     * Obtiene las últimas canciones reproducidas por el usuario.
+     * @param accessToken Token de acceso del usuario.
+     * @return JSON con las canciones reproducidas recientemente.
+     * @throws IOException Si ocurre un error al consultar la API.
+     */
     private String getRecentlyPlayedTracks(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url("https://api.spotify.com/v1/me/player/recently-played?limit=10")
@@ -252,6 +303,9 @@ public class OrpheusTUI extends Application {
         }
     }
 
+    /**
+     * Inicializa botones para añadir canciones por ID y mostrar el perfil del usuario (usado para pruebas).
+     */
     private void initializeButtons() {
         Button addTrackButton = new Button("Añadir canción a biblioteca");
         addTrackButton.setOnAction(event -> {
