@@ -12,6 +12,8 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
+import com.orpheus.mssql.conexion.ConexionBD;
+
 
 /**
  * Interfaz gráfica de usuario para interactuar con la API de Spotify.
@@ -26,10 +28,16 @@ public class OrpheusTUI extends Application {
 
     private static String accessToken;
 
+    CREATE TABLE spotify_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        access_token VARCHAR(255) NOT NULL,
+        expiration_time BIGINT NOT NULL
+    );
+
     //public void login(){}
 
     /**
-     * Método principal que lanza la aplicación JavaFX y ofrece opciones por consola para prueba.
+     * Función principal que lanza la aplicación JavaFX y ofrece opciones por consola para prueba.
      * @param args Argumentos de la línea de comandos.
      */
     public static void main(String[] args) {
