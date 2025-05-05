@@ -20,9 +20,6 @@ public class OrpheusData {
      * @return Una conexión activa a la base de datos
      * @throws SQLException Si ocurre un error al conectar con la base de datos
      */
-    public Connection connect() throws SQLException {
-        return DriverManager.getConnection(DB_URL);
-    }
 
 
     /**
@@ -73,6 +70,16 @@ public class OrpheusData {
         String query = "DELETE FROM spotify_tokens";
         try (Connection conn = connect(); PreparedStatement stmt = conn.prepareStatement(query)) {
             stmt.executeUpdate();
+        }
+    }
+
+
+    public Connection connect() throws SQLException {
+        try {
+            Class.forName("org.sqlite.JDBC");
+            return DriverManager.getConnection(DB_URL);
+        } catch (ClassNotFoundException e) {
+            throw new SQLException("No se pudo cargar el controlador SQLite", e);
         }
     }
 }

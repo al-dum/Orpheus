@@ -1,4 +1,6 @@
+import java.net.*;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Scanner;
 import javafx.application.Application;
 import javafx.scene.Scene;
@@ -9,10 +11,9 @@ import javafx.stage.Stage;
 import okhttp3.*;
 import com.google.gson.*;
 import java.io.IOException;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.net.InetAddress;
+import okhttp3.OkHttpClient;
 /**
  * Interfaz gráfica de usuario para interactuar con la API de Spotify.
  * Permite iniciar sesión, ver el perfil del usuario, buscar canciones por nombre y agregarlas a la biblioteca.
@@ -22,24 +23,66 @@ public class OrpheusTUI extends Application {
     private static final String CLIENT_ID = "0e003a2eb0a7493c86917c5bc3eb5297";
     private static final String CLIENT_SECRET = "70e4f66551b84356aad1105e620e6933";
     private static final String REDIRECT_URI = "https://sites.google.com/view/orpheus-app/p%C3%A1gina-principal";
-    private static final OkHttpClient client = new OkHttpClient();
 
     private static String accessToken;
     private static OrpheusData orpheusData = new OrpheusData();
 
+    // Configura el cliente OkHttp para usar el proxy del sistema
+    private static final OkHttpClient client = configureClientWithSystemProxy();
+
+    private static OkHttpClient configureClientWithSystemProxy() {
+        OkHttpClient.Builder builder = new OkHttpClient.Builder();
+
+        // Optional: Handle proxy authentication via environment variables
+        String proxyUser = System.getenv("PROXY_USER");
+        String proxyPass = System.getenv("PROXY_PASS");
+        if (proxyUser != null && proxyPass != null) {
+            builder.proxyAuthenticator((route, response) -> {
+                String credential = Credentials.basic(proxyUser, proxyPass);
+                return response.request().newBuilder()
+                        .header("Proxy-Authorization", credential)
+                        .build();
+            });
+        }
+
+        // Detect and apply system proxy
+        try {
+            URI uri = new URI("https://api.spotify.com");
+            List<Proxy> proxies = ProxySelector.getDefault().select(uri);
+            if (!proxies.isEmpty() && proxies.get(0).type() != Proxy.Type.DIRECT) {
+                builder.proxy(proxies.get(0));
+                System.out.println("Using system proxy: " + proxies.get(0));
+            } else {
+                System.out.println("No proxy detected, using direct connection.");
+            }
+        } catch (Exception e) {
+            System.out.println("Error detecting system proxy: " + e.getMessage());
+        }
+        return builder.build();
+    }
+
     /**
-     * Verifica si hay conexión a internet intentando resolver api.spotify.com.
+     * Verifica si hay conexión a internet intentando hacer una solicitud HTTP a api.spotify.com.
+     * Utiliza el cliente OkHttp configurado con los ajustes de proxy del sistema.
      * @return true si se puede acceder, false si no.
      */
     private boolean isInternetAvailable() {
         try {
-            InetAddress address = InetAddress.getByName("api.spotify.com");
-            return address.isReachable(2000); // espera de 2 segundos
+            Request request = new Request.Builder()
+                    .url("https://api.spotify.com/v1/ping")
+                    .head()  // Solo solicita los encabezados, no el cuerpo completo
+                    .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                boolean isSuccessful = response.isSuccessful() || response.code() == 401;  // 401 significa que necesitamos autenticación, pero el servidor está disponible
+                System.out.println("Internet available: " + isSuccessful + " (HTTP status: " + response.code() + ")");
+                return isSuccessful;
+            }
         } catch (IOException e) {
+            System.out.println("Internet check failed: " + e.getMessage());
             return false;
         }
     }
-
     /**
      * Función principal que lanza la aplicación JavaFX y ofrece opciones por consola para prueba.
      * @param args Argumentos de la línea de comandos.
@@ -135,6 +178,11 @@ public class OrpheusTUI extends Application {
         });
 
         loginButton.setOnAction(event -> {
+            if (!isInternetAvailable()) {
+                resultArea.setText("No hay conexión a Internet. Por favor, verifica tu conexión e intenta nuevamente.");
+                return;
+            }
+
             String scope = URLEncoder.encode("user-top-read user-read-recently-played", StandardCharsets.UTF_8);
             String authUrl = "https://accounts.spotify.com/authorize?" +
                     "client_id=" + CLIENT_ID +
@@ -190,8 +238,6 @@ public class OrpheusTUI extends Application {
         primaryStage.show();
     }
 
-
-
     /**
      * Intercambia el código de autorización por un token de acceso usando OAuth2.
      * @param authCode Código de autorización recibido tras el login.
@@ -215,12 +261,17 @@ public class OrpheusTUI extends Application {
                 .build();
 
         try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Error al obtener token de acceso: " + response.code() + " - " + response.body().string());
+            }
             String jsonResponse = response.body().string();
             JsonObject json = JsonParser.parseString(jsonResponse).getAsJsonObject();
+            if (!json.has("access_token")) {
+                throw new IOException("La respuesta no contiene un token de acceso: " + jsonResponse);
+            }
             return json.get("access_token").getAsString();
         }
     }
-
 
     /**
      * Busca una canción por nombre en la API de Spotify y devuelve su ID.
@@ -254,7 +305,6 @@ public class OrpheusTUI extends Application {
         }
     }
 
-
     /**
      * Obtiene las canciones más escuchadas del usuario.
      * @param accessToken Token de acceso del usuario.
@@ -268,6 +318,9 @@ public class OrpheusTUI extends Application {
                 .build();
 
         try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Error al obtener canciones más escuchadas: " + response.code() + " - " + response.body().string());
+            }
             return response.body().string();
         }
     }
@@ -329,6 +382,9 @@ public class OrpheusTUI extends Application {
                 .build();
 
         try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Error al obtener canciones reproducidas recientemente: " + response.code() + " - " + response.body().string());
+            }
             return response.body().string();
         }
     }
