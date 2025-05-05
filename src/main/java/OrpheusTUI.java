@@ -1,3 +1,4 @@
+import java.sql.SQLException;
 import java.util.Scanner;
 import javafx.application.Application;
 import javafx.scene.Scene;
@@ -11,10 +12,7 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-
-import com.orpheus.mssql.conexion.ConexionBD;
-
-
+import java.net.InetAddress;
 /**
  * Interfaz gráfica de usuario para interactuar con la API de Spotify.
  * Permite iniciar sesión, ver el perfil del usuario, buscar canciones por nombre y agregarlas a la biblioteca.
@@ -27,22 +25,33 @@ public class OrpheusTUI extends Application {
     private static final OkHttpClient client = new OkHttpClient();
 
     private static String accessToken;
+    private static OrpheusData orpheusData = new OrpheusData();
 
-    CREATE TABLE spotify_tokens (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        access_token VARCHAR(255) NOT NULL,
-        expiration_time BIGINT NOT NULL
-    );
-
-    //public void login(){}
+    /**
+     * Verifica si hay conexión a internet intentando resolver api.spotify.com.
+     * @return true si se puede acceder, false si no.
+     */
+    private boolean isInternetAvailable() {
+        try {
+            InetAddress address = InetAddress.getByName("api.spotify.com");
+            return address.isReachable(2000); // espera de 2 segundos
+        } catch (IOException e) {
+            return false;
+        }
+    }
 
     /**
      * Función principal que lanza la aplicación JavaFX y ofrece opciones por consola para prueba.
      * @param args Argumentos de la línea de comandos.
      */
-    public static void main(String[] args) {
+    public static void main(String[] args) throws SQLException {
         System.out.printf("Iniciando aplicación...\n");
         launch(args);
+
+        accessToken = orpheusData.getAccessToken();
+        if (accessToken == null) {
+            System.out.println("No hay token guardado. Inicia sesión con la interfaz gráfica.");
+        }
 
         Scanner scanner = new Scanner(System.in);
         System.out.println("Opciones:");
@@ -90,6 +99,11 @@ public class OrpheusTUI extends Application {
         Button profileButton = new Button("Ver perfil");
 
         addTrackButton.setOnAction(event -> {
+            if (!isInternetAvailable()) {
+                resultArea.setText("No hay conexión a Internet.");
+                return;
+            }
+
             javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog();
             dialog.setTitle("Añadir canción");
             dialog.setHeaderText("Introduce el nombre de la canción");
@@ -100,17 +114,23 @@ public class OrpheusTUI extends Application {
                     addTrackToLibrary(trackId, accessToken);
                 } catch (IOException e) {
                     e.printStackTrace();
+                    resultArea.setText("Error al añadir canción: " + e.getMessage());
                 }
             });
         });
 
         profileButton.setOnAction(event -> {
+            if (!isInternetAvailable()) {
+                resultArea.setText("No hay conexión a Internet.");
+                return;
+            }
+
             try {
                 String profile = getUserProfile(accessToken);
                 resultArea.setText("Perfil de usuario:\n" + profile);
             } catch (IOException e) {
                 e.printStackTrace();
-                resultArea.setText("Error al obtener perfil.");
+                resultArea.setText("Error al obtener perfil: " + e.getMessage());
             }
         });
 
@@ -133,6 +153,8 @@ public class OrpheusTUI extends Application {
                     System.out.println("Código de autorización recibido: " + authCode);
                     try {
                         accessToken = getAccessToken(authCode);
+                        long expirationTime = System.currentTimeMillis() + (3600 * 1000); // Token válido por 1 hora
+                        orpheusData.saveAccessToken(accessToken, expirationTime);
                         System.out.println("Access token: " + accessToken);
                         String topTracksJson = getTopTracks(accessToken);
                         System.out.println("Top tracks JSON:\n" + topTracksJson);
