@@ -91,9 +91,19 @@ public class OrpheusTUI extends Application {
         System.out.printf("Iniciando aplicación...\n");
         launch(args);
 
-        accessToken = orpheusData.getAccessToken();
-        if (accessToken == null) {
-            System.out.println("No hay token guardado. Inicia sesión con la interfaz gráfica.");
+        try {
+            if (orpheusData != null) {
+                OrpheusData.TokenData tokenData = orpheusData.getTokenData();
+                if (tokenData != null && !tokenData.isExpired()) {
+                    accessToken = tokenData.accessToken;
+                } else {
+                    System.out.println("El token ha expirado o no está disponible");
+                }
+            } else {
+                System.out.println("Error: orpheusData no está inicializado");
+            }
+        } catch (SQLException e) {
+            System.err.println("Error al obtener el token de acceso: " + e.getMessage());
         }
 
         Scanner scanner = new Scanner(System.in);
