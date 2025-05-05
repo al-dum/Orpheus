@@ -142,90 +142,72 @@ public class OrpheusTUI extends Application {
         Button profileButton = new Button("Ver perfil");
 
         addTrackButton.setOnAction(event -> {
-            if (!isInternetAvailable()) {
-                resultArea.setText("No hay conexión a Internet.");
-                return;
-            }
-
-            javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog();
-            dialog.setTitle("Añadir canción");
-            dialog.setHeaderText("Introduce el nombre de la canción");
-            dialog.setContentText("Nombre:");
-            dialog.showAndWait().ifPresent(songName -> {
-                try {
-                    String trackId = searchTrackIdByName(songName, accessToken);
-                    addTrackToLibrary(trackId, accessToken);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    resultArea.setText("Error al añadir canción: " + e.getMessage());
+            try {
+                if (!isInternetAvailable()) {
+                    resultArea.setText("No hay conexión a Internet.");
+                    return;
                 }
-            });
+
+                String accessToken = getValidAccessToken();
+                javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog();
+                dialog.setTitle("Añadir canción");
+                dialog.setHeaderText("Introduce el nombre de la canción");
+                dialog.setContentText("Nombre:");
+                dialog.showAndWait().ifPresent(songName -> {
+                    try {
+                        String trackId = searchTrackIdByName(songName, accessToken);
+                        addTrackToLibrary(trackId, accessToken);
+                        resultArea.setText("Canción añadida exitosamente");
+                    } catch (IOException e) {
+                        resultArea.setText("Error al añadir canción: " + e.getMessage());
+                    }
+                });
+            } catch (SQLException | IOException e) {
+                resultArea.setText("Error: " + e.getMessage());
+            }
         });
 
         profileButton.setOnAction(event -> {
-            if (!isInternetAvailable()) {
-                resultArea.setText("No hay conexión a Internet.");
-                return;
-            }
-
             try {
+                if (!isInternetAvailable()) {
+                    resultArea.setText("No hay conexión a Internet.");
+                    return;
+                }
+
+                String accessToken = getValidAccessToken();
                 String profile = getUserProfile(accessToken);
                 resultArea.setText("Perfil de usuario:\n" + profile);
-            } catch (IOException e) {
-                e.printStackTrace();
+            } catch (SQLException | IOException e) {
                 resultArea.setText("Error al obtener perfil: " + e.getMessage());
             }
         });
 
         loginButton.setOnAction(event -> {
-            if (!isInternetAvailable()) {
-                resultArea.setText("No hay conexión a Internet. Por favor, verifica tu conexión e intenta nuevamente.");
-                return;
-            }
-
-            String scope = URLEncoder.encode("user-top-read user-read-recently-played", StandardCharsets.UTF_8);
+            String scope = URLEncoder.encode("user-top-read user-read-recently-played user-library-modify",
+                                             StandardCharsets.UTF_8);
             String authUrl = "https://accounts.spotify.com/authorize?" +
                     "client_id=" + CLIENT_ID +
                     "&response_type=code" +
                     "&redirect_uri=" + URLEncoder.encode(REDIRECT_URI, StandardCharsets.UTF_8) +
                     "&scope=" + scope;
 
-            // Abre el navegador para iniciar sesión
             getHostServices().showDocument(authUrl);
 
-            // Inicia un servidor para manejar el callback
             spark.Spark.get("/callback", (req, res) -> {
-                System.out.println("Callback recibido con parámetros: " + req.queryParams());
                 String authCode = req.queryParams("code");
                 if (authCode != null) {
-                    System.out.println("Código de autorización recibido: " + authCode);
                     try {
-                        accessToken = getAccessToken(authCode);
-                        long expirationTime = System.currentTimeMillis() + (3600 * 1000); // Token válido por 1 hora
-                        orpheusData.saveAccessToken(accessToken, expirationTime);
-                        System.out.println("Access token: " + accessToken);
-                        String topTracksJson = getTopTracks(accessToken);
-                        System.out.println("Top tracks JSON:\n" + topTracksJson);
+                        JsonObject tokenResponse = getTokenResponse(authCode);
+                        String accessToken = tokenResponse.get("access_token").getAsString();
+                        String refreshToken = tokenResponse.get("refresh_token").getAsString();
+                        long expirationTime = System.currentTimeMillis() +
+                                (tokenResponse.get("expires_in").getAsLong() * 1000);
 
-                        // Parsear y mostrar los nombres de las canciones
-                        JsonObject json = JsonParser.parseString(topTracksJson).getAsJsonObject();
-                        JsonArray tracks = json.getAsJsonArray("items");
-                        StringBuilder sb = new StringBuilder();
-                        sb.append("Tus canciones principales:\n\n");
-                        for (JsonElement trackElement : tracks) {
-                            JsonObject track = trackElement.getAsJsonObject();
-                            String name = track.get("name").getAsString();
-                            sb.append("- ").append(name).append("\n");
-                        }
-                        System.out.println(sb.toString());
-                        resultArea.setText(sb.toString());
-
-                    } catch (IOException e) {
-                        resultArea.setText("Error al obtener datos: " + e.getMessage());
-                        e.printStackTrace();
+                        orpheusData.saveAccessToken(accessToken, expirationTime, refreshToken);
+                        resultArea.setText("Login exitoso!");
+                    } catch (IOException | SQLException e) {
+                        resultArea.setText("Error en login: " + e.getMessage());
                     }
-                } else {
-                    System.out.println("No se recibió el código de autorización");
                 }
                 return "Puedes cerrar esta ventana.";
             });
@@ -237,6 +219,33 @@ public class OrpheusTUI extends Application {
         primaryStage.setScene(scene);
         primaryStage.show();
     }
+
+
+
+
+
+    private JsonObject getTokenResponse(String authCode) throws IOException {
+        String credentials = CLIENT_ID + ":" + CLIENT_SECRET;
+        String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
+
+        RequestBody body = new FormBody.Builder()
+                .add("grant_type", "authorization_code")
+                .add("code", authCode)
+                .add("redirect_uri", REDIRECT_URI)
+                .build();
+
+        Request request = new Request.Builder()
+                .url("https://accounts.spotify.com/api/token")
+                .header("Authorization", "Basic " + encodedCredentials)
+                .post(body)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            String jsonResponse = response.body().string();
+            return JsonParser.parseString(jsonResponse).getAsJsonObject();
+        }
+    }
+
 
     /**
      * Intercambia el código de autorización por un token de acceso usando OAuth2.
@@ -411,5 +420,45 @@ public class OrpheusTUI extends Application {
                 e.printStackTrace();
             }
         });
+    }
+
+    // Check and refresh token if needed
+    private String getValidAccessToken() throws SQLException, IOException {
+        OrpheusData.TokenData tokenData = orpheusData.getTokenData();
+
+        if (tokenData == null) {
+            throw new IOException("No token available. Please login first.");
+        }
+
+        if (tokenData.isExpired()) {
+            String newAccessToken = refreshAccessToken(tokenData.refreshToken);
+            long newExpirationTime = System.currentTimeMillis() + (3600 * 1000); // 1 hour
+            orpheusData.saveAccessToken(newAccessToken, newExpirationTime, tokenData.refreshToken);
+            return newAccessToken;
+        }
+
+        return tokenData.accessToken;
+    }
+
+    private String refreshAccessToken(String refreshToken) throws IOException {
+        String credentials = CLIENT_ID + ":" + CLIENT_SECRET;
+        String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
+
+        RequestBody body = new FormBody.Builder()
+                .add("grant_type", "refresh_token")
+                .add("refresh_token", refreshToken)
+                .build();
+
+        Request request = new Request.Builder()
+                .url("https://accounts.spotify.com/api/token")
+                .header("Authorization", "Basic " + encodedCredentials)
+                .post(body)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            String jsonResponse = response.body().string();
+            JsonObject json = JsonParser.parseString(jsonResponse).getAsJsonObject();
+            return json.get("access_token").getAsString();
+        }
     }
 }
