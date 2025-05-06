@@ -1,5 +1,3 @@
-import java.io.IOException;
-
 /**
  * Simple test class to verify internet connectivity detection.
  */
