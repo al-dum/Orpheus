@@ -156,6 +156,7 @@ public class OrpheusTUI extends Application {
 
         Button addTrackButton = new Button("Añadir canción a biblioteca");
         Button profileButton = new Button("Ver perfil");
+        Button makePlaylistButton = new Button("Crear Playlist");
 
         addTrackButton.setOnAction(event -> {
             try {
@@ -478,7 +479,6 @@ public class OrpheusTUI extends Application {
         }
     }
 
-
     public static void getTopTracks(Stage stage) throws IOException, InterruptedException {
         HttpClient client = HttpClient.newHttpClient();
 
@@ -506,10 +506,8 @@ public class OrpheusTUI extends Application {
                 artistNames.append(artist.getString("name"));
                 if (j < artistsArray.length() - 1) artistNames.append(", ");
             }
-
             System.out.println(trackName + " by " + artistNames);
         }
-
         Platform.runLater(() -> {
             TextArea textArea = new TextArea(tracksText.toString());
             textArea.setEditable(false);
@@ -521,6 +519,57 @@ public class OrpheusTUI extends Application {
             stage.setScene(scene);
             stage.show();
         });
+    }
 
+    private void createPlaylistAndAddTracks() {
+        try {
+            if (!isInternetAvailable()) {
+                System.out.println("No hay conexión a Internet.");
+                return;
+            }
+
+            String accessToken = getValidAccessToken();
+
+            // Solicitar al usuario el nombre de la playlist
+            javafx.scene.control.TextInputDialog playlistDialog = new javafx.scene.control.TextInputDialog();
+            playlistDialog.setTitle("Crear Playlist");
+            playlistDialog.setHeaderText("Introduce el nombre de la playlist");
+            playlistDialog.setContentText("Nombre:");
+            String playlistName = playlistDialog.showAndWait().orElse(null);
+
+            if (playlistName == null || playlistName.isEmpty()) {
+                System.out.println("Nombre de playlist no proporcionado.");
+                return;
+            }
+
+            // Crear la playlist
+            String playlistId = SpotifyPlaylistManager.createPlaylist(accessToken, playlistName, "Playlist creada desde OrpheusTUI");
+
+            // Solicitar al usuario las canciones a agregar
+            javafx.scene.control.TextInputDialog tracksDialog = new javafx.scene.control.TextInputDialog();
+            tracksDialog.setTitle("Agregar Canciones");
+            tracksDialog.setHeaderText("Introduce los URIs de las canciones separados por comas");
+            tracksDialog.setContentText("URIs:");
+            String trackUrisInput = tracksDialog.showAndWait().orElse(null);
+
+            if (trackUrisInput == null || trackUrisInput.isEmpty()) {
+                System.out.println("No se proporcionaron canciones.");
+                return;
+            }
+
+            List<String> trackUris = List.of(trackUrisInput.split(","));
+            SpotifyPlaylistManager.addTracksToPlaylist(accessToken, playlistId, trackUris);
+
+            System.out.println("Playlist creada y canciones añadidas exitosamente.");
+        } catch (IOException | SQLException e) {
+            System.err.println("Error al crear la playlist o agregar canciones: " + e.getMessage());
+        }
+    }
+
+    private void initializePlaylistButtons(VBox layout) {
+        Button createPlaylistButton = new Button("Crear Playlist");
+        createPlaylistButton.setOnAction(event -> createPlaylistAndAddTracks());
+
+        layout.getChildren().add(createPlaylistButton);
     }
 }
