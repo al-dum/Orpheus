@@ -3,6 +3,7 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Scanner;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
@@ -14,6 +15,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import okhttp3.OkHttpClient;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import org.json.JSONArray;
+import org.json.JSONObject;
 /**
  * Interfaz gráfica de usuario para interactuar con la API de Spotify.
  * Permite iniciar sesión, ver el perfil del usuario, buscar canciones por nombre y agregarlas a la biblioteca.
@@ -473,4 +479,48 @@ public class OrpheusTUI extends Application {
     }
 
 
+    public static void getTopTracks(Stage stage) throws IOException, InterruptedException {
+        HttpClient client = HttpClient.newHttpClient();
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.spotify.com/v1/me/top/tracks?time_range=long_term&limit=5"))
+                .header("Authorization", "Bearer " + accessToken)
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        JSONObject json = new JSONObject(response.body());
+        JSONArray items = json.getJSONArray("items");
+
+        StringBuilder tracksText = new StringBuilder("Tus Pistas Principales:\n");
+
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject track = items.getJSONObject(i);
+            String trackName = track.getString("name");
+            JSONArray artistsArray = track.getJSONArray("artists");
+
+            StringBuilder artistNames = new StringBuilder();
+            for (int j = 0; j < artistsArray.length(); j++) {
+                JSONObject artist = artistsArray.getJSONObject(j);
+                artistNames.append(artist.getString("name"));
+                if (j < artistsArray.length() - 1) artistNames.append(", ");
+            }
+
+            System.out.println(trackName + " by " + artistNames);
+        }
+
+        Platform.runLater(() -> {
+            TextArea textArea = new TextArea(tracksText.toString());
+            textArea.setEditable(false);
+
+            VBox layout = new VBox(10, textArea);
+            Scene scene = new Scene(layout, 400, 300);
+
+            stage.setTitle("Top Tracks");
+            stage.setScene(scene);
+            stage.show();
+        });
+
+    }
 }
