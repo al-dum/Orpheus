@@ -57,23 +57,22 @@ public class SpotifyClient {
      * Uses multiple reliable endpoints to ensure a robust check.
      */
     public static boolean isInternetAvailable() {
-        // List of reliable endpoints to check
         String[] reliableEndpoints = {
-            "https://www.google.com",
-            "https://www.cloudflare.com",
-            "https://1.1.1.1",
-            "https://api.spotify.com"
+                "https://www.google.com",
+                "https://www.cloudflare.com",
+                "https://1.1.1.1",
+                "https://api.spotify.com"
         };
 
         for (String endpoint : reliableEndpoints) {
             try {
                 Request request = new Request.Builder()
                         .url(endpoint)
-                        .head()  // Only request headers, not the full body
+                        .head()
                         .build();
 
                 try (Response response = client.newCall(request).execute()) {
-                    boolean isSuccessful = response.isSuccessful() || response.code() == 401;  // 401 means we need authentication, but server is available
+                    boolean isSuccessful = response.isSuccessful() || response.code() == 401;
                     if (isSuccessful) {
                         System.out.println("Internet available: Connected to " + endpoint);
                         return true;
@@ -81,7 +80,6 @@ public class SpotifyClient {
                 }
             } catch (IOException e) {
                 System.out.println("Failed to connect to " + endpoint + ": " + e.getMessage());
-                // Continue to the next endpoint
             }
         }
 
@@ -212,6 +210,23 @@ public class SpotifyClient {
     }
 
     /**
+     * Gets the user's top artists.
+     */
+    public static String getTopArtists(String accessToken) throws IOException {
+        Request request = new Request.Builder()
+                .url(API_BASE_URL + "/me/top/artists?limit=10")
+                .header("Authorization", "Bearer " + accessToken)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Error getting top artists: " + response.code() + " - " + response.body().string());
+            }
+            return response.body().string();
+        }
+    }
+
+    /**
      * Gets the user's recently played tracks.
      */
     public static String getRecentlyPlayedTracks(String accessToken) throws IOException {
@@ -260,7 +275,7 @@ public class SpotifyClient {
      * Adds a track to the user's library.
      */
     public static void addTrackToLibrary(String trackId, String accessToken) throws IOException {
-        RequestBody body = RequestBody.create("", null); // Empty body for this request
+        RequestBody body = RequestBody.create("", null);
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/me/tracks?ids=" + trackId)
                 .header("Authorization", "Bearer " + accessToken)
