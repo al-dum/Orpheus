@@ -304,5 +304,5 @@ public class SpotifyClient {
             }
             return response.body().string();
         }
-    }
+    }  
 }
