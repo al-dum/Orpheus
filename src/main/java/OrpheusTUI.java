@@ -10,7 +10,7 @@ import spark.Spark;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.List;
 
 public class OrpheusTUI extends Application {
@@ -46,6 +46,17 @@ public class OrpheusTUI extends Application {
 
         // Login button action
         loginButton.setOnAction(event -> {
+            try {
+                SpotifyToken token = SpotifyToken.getValidToken();
+                if (token != null) {
+                    resultArea.setText("Ya estás autenticado con Spotify.");
+                    return;
+                }
+            } catch (SQLException e) {
+                resultArea.setText("Error al verificar tokens: " + e.getMessage());
+                return;
+            }
+
             if (!SpotifyClient.isInternetAvailable()) {
                 resultArea.setText("No hay conexión a Internet. Por favor, verifica tu conexión e intenta nuevamente.");
                 return;
@@ -281,3 +292,4 @@ public class OrpheusTUI extends Application {
         return token.getAccessToken();
     }
 }
+
