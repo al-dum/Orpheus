@@ -1,10 +1,16 @@
 import static spark.Spark.*;
-
-import java.sql.Connection;
-import okhttp3.*;
 import java.sql.*;
-import org.json.JSONObject; // si usas org.json
+import okhttp3.FormBody;
+import okhttp3.OkHttpClient;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import org.json.JSONObject;
+import okhttp3.Request;
+
 public class OrpheusAuth {
+    private static final String DB_URL = "jdbc:postgresql://localhost:5432/spotify_auth";
+    private static final String DB_USER = "postgres";
+    private static final String DB_PASSWORD = ""; // Add your password here
 
     public static void main(String[] args) {
         port(8080);
@@ -12,17 +18,11 @@ public class OrpheusAuth {
         get("/", (req, res) -> "Hello! Go to /login to connect with Spotify.");
 
         get("/login", (req, res) -> {
-            try (Connection conn = DriverManager.getConnection(
-                    "jdbc:postgresql://localhost:5432/spotify_auth",
-                    "postgres",
-                    "")) {
-
+            try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
                 String sql = "SELECT access_token FROM spotify_tokens ORDER BY created_at DESC LIMIT 1";
                 try (PreparedStatement stmt = conn.prepareStatement(sql);
                      ResultSet rs = stmt.executeQuery()) {
-
                     if (rs.next()) {
-                        // Ya hay un token almacenado
                         return "🔐 Ya estás autenticado con Spotify. Token en base de datos.";
                     }
                 }
@@ -31,8 +31,7 @@ public class OrpheusAuth {
                 return "❌ Error al verificar tokens: " + e.getMessage();
             }
 
-            // Si no hay token, redirigimos a Spotify
-            String clientId = "0e003a2eb0a7493c86917c5bc3eb5297";
+            String clientId = System.getenv("SPOTIFY_CLIENT_ID");
             String redirectUri = "http://localhost:8080/callback";
             String scope = "user-top-read";
             String authUrl = "https://accounts.spotify.com/authorize"
@@ -46,18 +45,21 @@ public class OrpheusAuth {
         });
 
         get("/callback", (req, res) -> {
-            String code = req.queryParams("code");
+            String error = req.queryParams("error");
+            if (error != null) {
+                return "Spotify error: " + error;
+            }
 
+            String code = req.queryParams("code");
             if (code == null) {
                 return "Authorization failed or was canceled.";
             }
 
-            String clientId = "0e003a2eb0a7493c86917c5bc3eb5297";
-            String clientSecret = "70e4f66551b84356aad1105e620e6933";
+            String clientId = System.getenv("SPOTIFY_CLIENT_ID");
+            String clientSecret = System.getenv("SPOTIFY_CLIENT_SECRET");
             String redirectUri = "http://localhost:8080/callback";
 
             OkHttpClient client = new OkHttpClient();
-
             RequestBody formBody = new FormBody.Builder()
                     .add("grant_type", "authorization_code")
                     .add("code", code)
@@ -79,17 +81,11 @@ public class OrpheusAuth {
 
                 String responseBody = response.body().string();
                 JSONObject json = new JSONObject(responseBody);
-
                 String accessToken = json.getString("access_token");
                 String refreshToken = json.getString("refresh_token");
                 int expiresIn = json.getInt("expires_in");
 
-                // Guardar en PostgreSQL
-                try (Connection conn = DriverManager.getConnection(
-                        "jdbc:postgresql://localhost:5432/spotify_auth", // cambia si usas otro puerto/base
-                        "postgres",                                      // tu usuario
-                        "")) {                                            // tu contraseña (si tienes una)
-
+                try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
                     String sql = "INSERT INTO spotify_tokens (access_token, refresh_token, expires_in) VALUES (?, ?, ?)";
                     try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                         stmt.setString(1, accessToken);
@@ -98,8 +94,12 @@ public class OrpheusAuth {
                         stmt.executeUpdate();
                     }
 
-                    return "✅ Tokens guardados correctamente en PostgreSQL";
+                    String deleteOld = "DELETE FROM spotify_tokens WHERE id NOT IN (SELECT id FROM spotify_tokens ORDER BY created_at DESC LIMIT 1)";
+                    try (PreparedStatement deleteStmt = conn.prepareStatement(deleteOld)) {
+                        deleteStmt.executeUpdate();
+                    }
 
+                    return "✅ Tokens guardados correctamente en PostgreSQL";
                 } catch (SQLException e) {
                     e.printStackTrace();
                     return "❌ Error al guardar tokens: " + e.getMessage();

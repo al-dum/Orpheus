@@ -17,22 +17,33 @@ public class OrpheusTUI extends Application {
     private static OrpheusData orpheusData = new OrpheusData();
     private TextArea resultArea;
 
-    /**
-     * Main method to launch the JavaFX application and initialize the Spark server.
-     * @param args Command-line arguments.
-     */
     public static void main(String[] args) {
         Spark.port(8080);
         launch(args);
     }
 
-    /**
-     * Initializes the GUI with buttons for login, adding tracks, viewing profile, creating playlists, and showing top tracks/artists.
-     * @param primaryStage The primary stage for the application.
-     */
     @Override
     public void start(Stage primaryStage) {
         primaryStage.setTitle("Spotify User Data");
+
+        Spark.get("/callback", (req, res) -> {
+            String authCode = req.queryParams("code");
+            if (authCode != null) {
+                try {
+                    JsonObject tokenResponse = SpotifyClient.getTokenResponse(authCode);
+                    String accessToken = tokenResponse.get("access_token").getAsString();
+                    String refreshToken = tokenResponse.get("refresh_token").getAsString();
+                    int expiresIn = tokenResponse.get("expires_in").getAsInt();
+
+                    SpotifyToken token = new SpotifyToken(accessToken, expiresIn, refreshToken);
+                    token.save();
+                    Platform.runLater(() -> resultArea.setText("Login exitoso!"));
+                } catch (IOException | SQLException e) {
+                    Platform.runLater(() -> resultArea.setText("Error en login: " + e.getMessage()));
+                }
+            }
+            return "Puedes cerrar esta ventana.";
+        });
 
         Button loginButton = new Button("Iniciar sesión en Spotify");
         resultArea = new TextArea();
@@ -44,7 +55,6 @@ public class OrpheusTUI extends Application {
         Button topTracksButton = new Button("Ver Top Tracks");
         Button topArtistsButton = new Button("Ver Top Artistas");
 
-        // Login button action
         loginButton.setOnAction(event -> {
             try {
                 SpotifyToken token = SpotifyToken.getValidToken();
@@ -52,7 +62,7 @@ public class OrpheusTUI extends Application {
                     resultArea.setText("Ya estás autenticado con Spotify.");
                     return;
                 }
-            } catch (SQLException e) {
+            } catch (SQLException | IOException e) {
                 resultArea.setText("Error al verificar tokens: " + e.getMessage());
                 return;
             }
@@ -71,28 +81,8 @@ public class OrpheusTUI extends Application {
                     "&scope=" + scope;
 
             getHostServices().showDocument(authUrl);
-
-            Spark.get("/callback", (req, res) -> {
-                String authCode = req.queryParams("code");
-                if (authCode != null) {
-                    try {
-                        JsonObject tokenResponse = SpotifyClient.getTokenResponse(authCode);
-                        String accessToken = tokenResponse.get("access_token").getAsString();
-                        String refreshToken = tokenResponse.get("refresh_token").getAsString();
-                        int expiresIn = tokenResponse.get("expires_in").getAsInt();
-
-                        SpotifyToken token = new SpotifyToken(accessToken, expiresIn, refreshToken);
-                        token.save();
-                        Platform.runLater(() -> resultArea.setText("Login exitoso!"));
-                    } catch (IOException | SQLException e) {
-                        Platform.runLater(() -> resultArea.setText("Error en login: " + e.getMessage()));
-                    }
-                }
-                return "Puedes cerrar esta ventana.";
-            });
         });
 
-        // Add track button action
         addTrackButton.setOnAction(event -> {
             try {
                 if (!SpotifyClient.isInternetAvailable()) {
@@ -119,7 +109,6 @@ public class OrpheusTUI extends Application {
             }
         });
 
-        // Profile button action
         profileButton.setOnAction(event -> {
             try {
                 if (!SpotifyClient.isInternetAvailable()) {
@@ -135,10 +124,8 @@ public class OrpheusTUI extends Application {
             }
         });
 
-        // Create playlist button action
         createPlaylistButton.setOnAction(event -> createPlaylistAndAddTracks());
 
-        // Top tracks button action
         topTracksButton.setOnAction(event -> {
             try {
                 if (!SpotifyClient.isInternetAvailable()) {
@@ -153,7 +140,6 @@ public class OrpheusTUI extends Application {
             }
         });
 
-        // Top artists button action
         topArtistsButton.setOnAction(event -> {
             try {
                 if (!SpotifyClient.isInternetAvailable()) {
@@ -174,11 +160,6 @@ public class OrpheusTUI extends Application {
         primaryStage.show();
     }
 
-    /**
-     * Displays the user's top tracks in the GUI TextArea.
-     * @param accessToken The user's access token.
-     * @throws IOException If an error occurs during the API request.
-     */
     private void displayTopTracks(String accessToken) throws IOException {
         try {
             String topTracksJson = SpotifyClient.getTopTracks(accessToken);
@@ -206,11 +187,6 @@ public class OrpheusTUI extends Application {
         }
     }
 
-    /**
-     * Displays the user's top artists in the GUI TextArea.
-     * @param accessToken The user's access token.
-     * @throws IOException If an error occurs during the API request.
-     */
     private void displayTopArtists(String accessToken) throws IOException {
         try {
             String topArtistsJson = SpotifyClient.getTopArtists(accessToken);
@@ -230,9 +206,6 @@ public class OrpheusTUI extends Application {
         }
     }
 
-    /**
-     * Creates a playlist and adds tracks based on user input.
-     */
     private void createPlaylistAndAddTracks() {
         try {
             if (!SpotifyClient.isInternetAvailable()) {
@@ -241,8 +214,6 @@ public class OrpheusTUI extends Application {
             }
 
             String accessToken = getValidAccessToken();
-
-            // Prompt for playlist name
             javafx.scene.control.TextInputDialog playlistDialog = new javafx.scene.control.TextInputDialog();
             playlistDialog.setTitle("Crear Playlist");
             playlistDialog.setHeaderText("Introduce el nombre de la playlist");
@@ -254,10 +225,7 @@ public class OrpheusTUI extends Application {
                 return;
             }
 
-            // Create the playlist
             String playlistId = SpotifyPlaylistManager.createPlaylist(accessToken, playlistName, "Playlist creada desde OrpheusTUI");
-
-            // Prompt for track URIs
             javafx.scene.control.TextInputDialog tracksDialog = new javafx.scene.control.TextInputDialog();
             tracksDialog.setTitle("Agregar Canciones");
             tracksDialog.setHeaderText("Introduce los URIs de las canciones separados por comas");
@@ -271,19 +239,12 @@ public class OrpheusTUI extends Application {
 
             List<String> trackUris = List.of(trackUrisInput.split(","));
             SpotifyPlaylistManager.addTracksToPlaylist(accessToken, playlistId, trackUris);
-
             resultArea.setText("Playlist creada y canciones añadidas exitosamente.");
         } catch (IOException | SQLException e) {
             resultArea.setText("Error al crear la playlist o agregar canciones: " + e.getMessage());
         }
     }
 
-    /**
-     * Gets a valid access token, refreshing it if necessary.
-     * @return A valid access token.
-     * @throws SQLException If a database error occurs.
-     * @throws IOException If a network error occurs.
-     */
     private String getValidAccessToken() throws SQLException, IOException {
         SpotifyToken token = SpotifyToken.getValidToken();
         if (token == null) {
@@ -292,4 +253,3 @@ public class OrpheusTUI extends Application {
         return token.getAccessToken();
     }
 }
-
