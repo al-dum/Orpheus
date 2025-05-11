@@ -11,7 +11,7 @@ public class SpotifyToken {
 
     private static final String DB_URL = "jdbc:postgresql://localhost:5432/spotify_auth";
     private static final String DB_USER = "postgres";
-    private static final String DB_PASSWORD = ""; // Add your password here
+    private static final String DB_PASSWORD = ""; // No hay password
 
     public SpotifyToken(String accessToken, long expirationTimeMillis, String refreshToken) {
         this.accessToken = accessToken;
@@ -42,12 +42,14 @@ public class SpotifyToken {
     public void save() throws SQLException {
         dataStore.saveAccessToken(accessToken, expirationTimeMillis, refreshToken);
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
-            String sql = "INSERT INTO spotify_tokens (access_token, refresh_token, expires_in) VALUES (?, ?, ?)";
+            String sql = "INSERT INTO spotify_tokens (access_token, refresh_token, expires_in, expiration_time) VALUES (?, ?, ?, ?)";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setString(1, accessToken);
                 stmt.setString(2, refreshToken);
                 stmt.setInt(3, (int) ((expirationTimeMillis - System.currentTimeMillis()) / 1000));
+                stmt.setLong(4, expirationTimeMillis);
                 stmt.executeUpdate();
+                System.out.println("SpotifyToken.save: Token saved: " + accessToken);
             }
         }
     }
@@ -68,22 +70,25 @@ public class SpotifyToken {
                 if (rs.next()) {
                     String accessToken = rs.getString("access_token");
                     String refreshToken = rs.getString("refresh_token");
-                    int expiresIn = rs.getInt("expires_in");
-                    Timestamp createdAt = rs.getTimestamp("created_at");
+                    long expirationTime = rs.getLong("expiration_time");
 
-                    long currentTime = System.currentTimeMillis();
-                    long tokenTime = createdAt.getTime();
-                    if ((currentTime - tokenTime) >= expiresIn * 1000L) {
+                    System.out.println("getValidToken: Retrieved token: " + accessToken + ", expires at: " + expirationTime);
+
+                    if (System.currentTimeMillis() >= expirationTime) {
+                        System.out.println("Token expired, refreshing...");
                         JsonObject refreshed = JsonParser.parseString(SpotifyClient.refreshAccessToken(refreshToken)).getAsJsonObject();
                         String newAccessToken = refreshed.get("access_token").getAsString();
                         int newExpiresIn = refreshed.get("expires_in").getAsInt();
+                        long newExpirationTime = System.currentTimeMillis() + (newExpiresIn * 1000L);
 
-                        String updateSql = "INSERT INTO spotify_tokens (access_token, refresh_token, expires_in) VALUES (?, ?, ?)";
+                        String updateSql = "INSERT INTO spotify_tokens (access_token, refresh_token, expires_in, expiration_time) VALUES (?, ?, ?, ?)";
                         try (PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
                             updateStmt.setString(1, newAccessToken);
                             updateStmt.setString(2, refreshToken);
                             updateStmt.setInt(3, newExpiresIn);
+                            updateStmt.setLong(4, newExpirationTime);
                             updateStmt.executeUpdate();
+                            System.out.println("getValidToken: Token refreshed: " + newAccessToken);
                         }
 
                         String deleteOld = "DELETE FROM spotify_tokens WHERE id NOT IN (SELECT id FROM spotify_tokens ORDER BY created_at DESC LIMIT 1)";
@@ -91,13 +96,14 @@ public class SpotifyToken {
                             deleteStmt.executeUpdate();
                         }
 
-                        return new SpotifyToken(newAccessToken, System.currentTimeMillis() + (newExpiresIn * 1000L), refreshToken);
+                        return new SpotifyToken(newAccessToken, newExpirationTime, refreshToken);
                     } else {
-                        return new SpotifyToken(accessToken, System.currentTimeMillis() + (expiresIn * 1000L), refreshToken);
+                        return new SpotifyToken(accessToken, expirationTime, refreshToken);
                     }
                 }
             }
         }
+        System.out.println("getValidToken: No token found in database.");
         return null;
     }
 

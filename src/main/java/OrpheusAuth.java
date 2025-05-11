@@ -76,22 +76,28 @@ public class OrpheusAuth {
 
             try (Response response = client.newCall(request).execute()) {
                 if (!response.isSuccessful()) {
-                    return "Failed to get access token: " + response.body().string();
+                    String errorBody = response.body().string();
+                    System.out.println("Token request failed: " + errorBody);
+                    return "Failed to get access token: " + errorBody;
                 }
 
                 String responseBody = response.body().string();
+                System.out.println("Token response: " + responseBody);
                 JSONObject json = new JSONObject(responseBody);
                 String accessToken = json.getString("access_token");
                 String refreshToken = json.getString("refresh_token");
                 int expiresIn = json.getInt("expires_in");
+                long expirationTime = System.currentTimeMillis() + (expiresIn * 1000L);
 
                 try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
-                    String sql = "INSERT INTO spotify_tokens (access_token, refresh_token, expires_in) VALUES (?, ?, ?)";
+                    String sql = "INSERT INTO spotify_tokens (access_token, refresh_token, expires_in, expiration_time) VALUES (?, ?, ?, ?)";
                     try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                         stmt.setString(1, accessToken);
                         stmt.setString(2, refreshToken);
                         stmt.setInt(3, expiresIn);
+                        stmt.setLong(4, expirationTime);
                         stmt.executeUpdate();
+                        System.out.println("Token saved: " + accessToken);
                     }
 
                     String deleteOld = "DELETE FROM spotify_tokens WHERE id NOT IN (SELECT id FROM spotify_tokens ORDER BY created_at DESC LIMIT 1)";

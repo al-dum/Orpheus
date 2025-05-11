@@ -12,7 +12,7 @@ import okhttp3.*;
 public class SpotifyClient {
     public static final String CLIENT_ID = "0e003a2eb0a7493c86917c5bc3eb5297";
     private static final String CLIENT_SECRET = "70e4f66551b84356aad1105e620e6933";
-    public static final String REDIRECT_URI = "https://sites.google.com/view/orpheus-app/p%C3%A1gina-principal";
+    public static final String REDIRECT_URI = "http://localhost:8080/callback";
     private static final String API_BASE_URL = "https://api.spotify.com/v1";
     private static final String AUTH_URL = "https://accounts.spotify.com/api/token";
 
