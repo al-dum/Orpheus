@@ -1,3 +1,5 @@
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -170,10 +172,19 @@ public class SpotifyClient {
                 throw new IOException("Error refreshing token: " + response.code() + " - " + response.body().string());
             }
             String jsonResponse = response.body().string();
-            com.google.gson.JsonObject json = com.google.gson.JsonParser.parseString(jsonResponse).getAsJsonObject();
-            return json.get("access_token").getAsString();
+            try {
+                JsonObject json = JsonParser.parseString(jsonResponse).getAsJsonObject();
+                return json.get("access_token").getAsString();
+            } catch (Exception e) {
+                // Handle case where response might be just the token string
+                if (jsonResponse.startsWith("BQ")) { // Spotify tokens typically start with BQ
+                    return jsonResponse;
+                }
+                throw new IOException("Invalid token response: " + jsonResponse);
+            }
         }
     }
+
 
     /**
      * Gets the user's profile information.

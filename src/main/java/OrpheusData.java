@@ -32,7 +32,7 @@ public class OrpheusData {
     }
 
     public TokenData getTokenData() throws SQLException {
-        String query = "SELECT access_token, expiration_time, refresh_token FROM spotify_tokens ORDER BY created_at DESC LIMIT 1";
+        String query = "SELECT access_token, expiration_time, refresh_token, expires_in FROM spotify_tokens ORDER BY created_at DESC LIMIT 1";
         try (Connection conn = connect(); PreparedStatement stmt = conn.prepareStatement(query)) {
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
@@ -45,6 +45,7 @@ public class OrpheusData {
         }
         return null;
     }
+
 
     public void deleteAccessToken() throws SQLException {
         String query = "DELETE FROM spotify_tokens";
