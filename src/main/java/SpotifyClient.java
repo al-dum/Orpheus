@@ -1,7 +1,9 @@
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
@@ -282,6 +284,27 @@ public class SpotifyClient {
         }
     }
 
+    public static String searchAlbumIdByName(String albumName, String accessToken) throws IOException {
+        OkHttpClient client = new OkHttpClient();
+        String url = "https://api.spotify.com/v1/search?q=" + URLEncoder.encode(albumName, StandardCharsets.UTF_8) + "&type=album&limit=1";
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer " + accessToken)
+                .build();
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Error al buscar álbum: " + response.code());
+            }
+            String responseBody = response.body().string();
+            com.google.gson.JsonObject json = com.google.gson.JsonParser.parseString(responseBody).getAsJsonObject();
+            com.google.gson.JsonArray items = json.getAsJsonObject("albums").getAsJsonArray("items");
+            if (items.size() == 0) {
+                throw new IOException("Álbum no encontrado");
+            }
+            return items.get(0).getAsJsonObject().get("id").getAsString();
+        }
+    }
+
     /**
      * Adds a track to the user's library.
      */
@@ -300,10 +323,25 @@ public class SpotifyClient {
         }
     }
 
+    public static void addAlbumToLibrary(String albumId, String accessToken) throws IOException {
+        OkHttpClient client = new OkHttpClient();
+        String url = "https://api.spotify.com/v1/me/albums?ids=" + albumId;
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer " + accessToken)
+                .put(RequestBody.create(new byte[0]))
+                .build();
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Error al añadir álbum: " + response.code());
+            }
+        }
+    }
+
     /**
      * Gets information about a specific track.
      */
-    public static String getTrackInfo(String trackId, String accessToken) throws IOException {
+    public static JsonObject getTrackInfo(String trackId, String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/tracks/" + trackId)
                 .header("Authorization", "Bearer " + accessToken)
@@ -313,7 +351,15 @@ public class SpotifyClient {
             if (!response.isSuccessful()) {
                 throw new IOException("Error getting track info: " + response.code() + " - " + response.body().string());
             }
-            return response.body().string();
+            return JsonParser.parseString(response.body().string()).getAsJsonObject();        }
+    }
+
+    public static String getAlbumCoverUrl(String trackId, String accessToken) throws IOException {
+        JsonObject track = getTrackInfo(trackId, accessToken);
+        JsonArray images = track.getAsJsonObject("album").getAsJsonArray("images");
+        if (images.size() > 0) {
+            return images.get(0).getAsJsonObject().get("url").getAsString();
         }
-    }  
+        return null;
+    }
 }
