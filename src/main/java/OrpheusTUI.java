@@ -570,11 +570,11 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
                 return;
             }
 
-            String playlistId = SpotifyPlaylistManager.createPlaylist(accessToken, playlistName, "Playlist creada desde OrpheusTUI");
+            String playlistId = SpotifyPlaylistManager.createPlaylist(accessToken, playlistName, "Playlist creada desde Orpheus");
             TextInputDialog tracksDialog = new TextInputDialog();
             tracksDialog.setTitle("Agregar Canciones");
-            tracksDialog.setHeaderText("Introduce los URIs de las canciones separados por comas");
-            tracksDialog.setContentText("URIs:");
+            tracksDialog.setHeaderText("Introduce los nombres de las canciones separados por comas");
+            tracksDialog.setContentText("Nombress:");
             String trackUrisInput = tracksDialog.showAndWait().orElse(null);
 
             if (trackUrisInput == null || trackUrisInput.isEmpty()) {

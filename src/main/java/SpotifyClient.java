@@ -201,7 +201,12 @@ public class SpotifyClient {
             if (!response.isSuccessful()) {
                 throw new IOException("Error getting profile: " + response.code() + " - " + response.body().string());
             }
-            return response.body().string();
+            String json = response.body().string();
+            JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
+            // Devuelve solo el display_name, si existe
+            return obj.has("display_name") && !obj.get("display_name").isJsonNull()
+                    ? obj.get("display_name").getAsString()
+                    : null;
         }
     }
 
