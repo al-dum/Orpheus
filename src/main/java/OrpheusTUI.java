@@ -1,5 +1,6 @@
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import java.io.File;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleIntegerProperty;
@@ -10,10 +11,10 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.control.TableCell;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Pair;
 import spark.Spark;
@@ -23,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpdateListener {
     private ReviewVoteSystem voteSystem;
@@ -30,17 +32,31 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
     private Stage primaryStage;
     private StackPane resultContainer;
     private TextArea resultArea;
+    private TabPane tabPane;
     private int currentUserId = -1;
     private String currentUsername = "";
     private String currentAvatarUrl = DEFAULT_AVATAR;
+    private static final String SPOTIFY_AUTH_DB_URL = "jdbc:postgresql://localhost:5432/spotify_auth";
+    private static final String SPOTIFY_AUTH_DB_USER = "postgres";
+    private static final String SPOTIFY_AUTH_DB_PASSWORD = "1234";
     private String currentAccessToken = "";
+    private String currentRefreshToken = "";
     private TableView<ReviewManager.Review> reviewsTable = new TableView<>();
     private TableView<UserManager.UserProfile> usersTable = new TableView<>();
     private ObservableList<ReviewManager.Review> reviewsData = FXCollections.observableArrayList();
     private ObservableList<UserManager.UserProfile> usersData = FXCollections.observableArrayList();
     private static OrpheusData orpheusData = new OrpheusData();
+    private ReviewUserManager.ReviewUser currentReviewUser = null; // Tracks logged-in review user
+    private boolean isAdminMode = false;
+    private static final String ADMIN_PASSWORD = "admin123"; // Hardcoded for simplicity; consider securing this
 
     public static void main(String[] args) {
+        try {
+            ReviewManager.inicializarTablas();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
         Spark.port(8080);
         launch(args);
     }
@@ -54,25 +70,103 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         this.voteSystem = new ReviewVoteSystem(this);
         primaryStage.setTitle("Orpheus - Spotify Social");
 
-        // Panel superior de usuario
-        HBox userPanel = createUserPanel();
+        // Prompt for user type
+        ChoiceDialog<String> userTypeDialog = new ChoiceDialog<>("Usuario", "Usuario", "Admin");
+        userTypeDialog.setTitle("Seleccionar Tipo de Usuario");
+        userTypeDialog.setHeaderText("¿Qué tipo de usuario eres?");
+        userTypeDialog.setContentText("Selecciona:");
+        Optional<String> userTypeResult = userTypeDialog.showAndWait();
 
-        // Contenedor de resultados
+        if (!userTypeResult.isPresent()) {
+            System.out.println("Usuario no existe, por favor registrelo");
+            return;
+        }
+
+        if (userTypeResult.get().equals("Admin")) {
+            TextInputDialog passwordDialog = new TextInputDialog();
+            passwordDialog.setTitle("Autenticación de Admin");
+            passwordDialog.setHeaderText("Ingresa la contraseña de administrador");
+            passwordDialog.setContentText("Contraseña:");
+            Optional<String> passwordResult = passwordDialog.showAndWait();
+            if (passwordResult.isPresent() && passwordResult.get().equals(ADMIN_PASSWORD)) {
+                isAdminMode = true;
+            } else {
+                showAlert("Error", "Contraseña de administrador incorrecta.");
+                Platform.exit();
+                return;
+            }
+        } else {
+            // User mode: Prompt for login or registration
+            Dialog<ButtonType> loginDialog = new Dialog<>();
+            loginDialog.setTitle("Inicio de Sesión");
+            loginDialog.setHeaderText("Inicia sesión o regístrate como usuario de reseñas");
+
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(10);
+            TextField usernameField = new TextField();
+            PasswordField passwordField = new PasswordField();
+            grid.add(new Label("Usuario:"), 0, 0);
+            grid.add(usernameField, 1, 0);
+            grid.add(new Label("Contraseña:"), 0, 1);
+            grid.add(passwordField, 1, 1);
+
+            loginDialog.getDialogPane().setContent(grid);
+            loginDialog.getDialogPane().getButtonTypes().addAll(
+                    new ButtonType("Iniciar Sesión", ButtonBar.ButtonData.OK_DONE),
+                    new ButtonType("Registrarse", ButtonBar.ButtonData.OTHER),
+                    ButtonType.CANCEL
+            );
+
+            Optional<ButtonType> loginResult = loginDialog.showAndWait();
+            if (!loginResult.isPresent() || loginResult.get() == ButtonType.CANCEL) {
+                Platform.exit();
+                return;
+            }
+
+            String username = usernameField.getText().trim();
+            String password = passwordField.getText();
+            if (username.isEmpty() || password.isEmpty()) {
+                showAlert("Error", "Debes ingresar un nombre de usuario y contraseña.");
+                Platform.exit();
+                return;
+            }
+
+            try {
+            if (loginResult.get().getText().equals("Iniciar Sesión")) {
+                currentReviewUser = ReviewUserManager.loginUser(username, password);
+            } else {
+                currentReviewUser = ReviewUserManager.registerUser(username, password);
+            }
+            resultArea.setText("Bienvenido, " + currentReviewUser.username + "!");
+        } catch (SQLException e) {
+            showAlert("Error", "Error en autenticación: " + e.getMessage());
+            e.printStackTrace(); // Imprime el error completo en la consola para depuración
+            // Comentar o eliminar la siguiente línea para evitar que se cierre la aplicación
+            // Platform.exit();
+            return;
+        }
+        }
+
+        HBox userPanel = createUserPanel();
         resultContainer = new StackPane();
         resultContainer.getChildren().add(resultArea);
         ScrollPane resultScroll = new ScrollPane(resultContainer);
         resultScroll.setFitToWidth(true);
-        resultScroll.setPrefHeight(300);
+        resultScroll.setPrefHeight(100);
 
-        // Pestañas principales
-        TabPane tabPane = new TabPane();
-        tabPane.getTabs().addAll(
-                createMusicTab(),
-                createSocialTab(),
-                createReviewsTab()
-        );
+        // In start method, replace tabPane initialization
+        tabPane = new TabPane();
+        if (isAdminMode) {
+            tabPane.getTabs().add(createAdminTab());
+        } else {
+            tabPane.getTabs().addAll(
+                    createMusicTab(),
+                    createSocialTab(),
+                    createReviewsTab()
+            );
+        }
 
-        // Layout principal
         BorderPane mainLayout = new BorderPane();
         mainLayout.setTop(userPanel);
         mainLayout.setCenter(tabPane);
@@ -83,33 +177,42 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
 
         configureSpotifyCallback();
 
-        new Thread(() -> {
-            try {
-                SpotifyToken token = SpotifyToken.getValidToken();
-                if (token != null) {
-                    currentAccessToken = token.getAccessToken();
-                    String userProfileJson = SpotifyClient.getUserProfile(currentAccessToken);
-                    org.json.JSONObject userProfile = new org.json.JSONObject(userProfileJson);
-                    String spotifyId = userProfile.getString("id");
-                    String username = userProfile.optString("display_name", spotifyId);
-                    String avatarUrl = userProfile.has("images") && !userProfile.getJSONArray("images").isEmpty() ?
-                            userProfile.getJSONArray("images").getJSONObject(0).getString("url") :
-                            DEFAULT_AVATAR;
 
-                    currentUserId = UserManager.getOrCreateUser(spotifyId, username, avatarUrl);
-                    currentUsername = username;
-                    currentAvatarUrl = avatarUrl;
+        // Check for existing Spotify session (only for User mode)
+        if (!isAdminMode) {
+            new Thread(() -> {
+                try {
+                    SpotifyToken token = SpotifyToken.getValidToken();
+                    if (token != null) {
+                        currentAccessToken = token.getAccessToken();
+                        String userProfileJson = SpotifyClient.getUserProfileJson(currentAccessToken);
+                        org.json.JSONObject userProfile = new org.json.JSONObject(userProfileJson);
+                        String spotifyId = userProfile.getString("id");
+                        String username = userProfile.optString("display_name", spotifyId);
+                        String avatarUrl = userProfile.has("images") && !userProfile.getJSONArray("images").isEmpty() ?
+                                userProfile.getJSONArray("images").getJSONObject(0).getString("url") :
+                                DEFAULT_AVATAR;
 
-                    Platform.runLater(() -> {
-                        ((ImageView)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(0)).setImage(new Image(currentAvatarUrl));
-                        ((Label)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(1)).setText(currentUsername);
-                        resultArea.setText("¡Bienvenido, " + currentUsername + "!");
-                    });
+                        System.out.println("Intentando obtener/crear usuario con spotifyId: " + spotifyId);
+                        currentUserId = UserManager.getOrCreateUser(spotifyId, username, avatarUrl);
+                        System.out.println("Usuario creado/Obtenido con ID: " + currentUserId);
+                        currentUsername = username;
+                        currentAvatarUrl = avatarUrl;
+
+                        Platform.runLater(() -> {
+                            ((ImageView)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(0)).setImage(new Image(currentAvatarUrl));
+                            ((Label)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(1)).setText(currentUsername);
+                            resultArea.appendText("\nConectado con Spotify como " + currentUsername + ". User ID: " + currentUserId);
+                        });
+                    } else {
+                        Platform.runLater(() -> resultArea.appendText("\nNo hay sesión de Spotify activa. Inicia sesión para funciones avanzadas."));
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace(); // Imprime el stack trace completo
+                    Platform.runLater(() -> resultArea.appendText("\nError al verificar sesión de Spotify: " + e.getMessage()));
                 }
-            } catch (Exception e) {
-                // Ignorar si no hay sesión previa
-            }
-        }).start();
+            }).start();
+        }
     }
 
     private HBox createUserPanel() {
@@ -117,70 +220,135 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         Label usernameLabel = new Label("No autenticado");
         Button logoutButton = new Button("Cerrar sesión");
 
+        Button exitButton = new Button("Salir");
+        exitButton.setOnAction(e -> Platform.exit());
+        exitButton.setStyle("-fx-background-color: #ff5252; -fx-text-fill: white;");
+
+        Button volverButton = new Button("Volver a selección de usuario");
+        volverButton.setOnAction(e -> volverASeleccionUsuario());
+        volverButton.setStyle("-fx-background-color: #4286f4; -fx-text-fill: white;");
+
         logoutButton.setOnAction(e -> {
             try {
                 SpotifyToken.clear();
                 currentUserId = -1;
                 currentUsername = "";
                 currentAccessToken = "";
+                currentAvatarUrl = DEFAULT_AVATAR;
                 avatarView.setImage(new Image(DEFAULT_AVATAR));
                 usernameLabel.setText("No autenticado");
                 resultArea.setText("Sesión cerrada correctamente");
+                HBox buttonBox = (HBox) ((VBox) tabPane.getTabs().get(2).getContent()).getChildren().get(0);
+                if (!buttonBox.getChildren().stream().anyMatch(node -> node instanceof Button && ((Button) node).getText().equals("Iniciar sesión en Spotify"))) {
+                    Button loginButton = new Button("Iniciar sesión en Spotify");
+                    loginButton.setOnAction(event -> triggerSpotifyLogin());
+                    buttonBox.getChildren().add(loginButton);
+                }
             } catch (SQLException ex) {
                 resultArea.setText("Error al cerrar sesión: " + ex.getMessage());
             }
         });
 
-        HBox userPanel = new HBox(15, avatarView, usernameLabel, logoutButton);
+        HBox userPanel = new HBox(15, avatarView, usernameLabel, logoutButton, volverButton, exitButton);
         userPanel.setAlignment(Pos.CENTER_LEFT);
         userPanel.setPadding(new Insets(10));
         return userPanel;
+    }
+
+    private Tab createAdminTab() {
+        VBox adminTab = new VBox(15);
+        adminTab.setPadding(new Insets(15));
+
+        Button clearUsersButton = new Button("Vaciar tabla de usuarios");
+        Button exportUsersButton = new Button("Descargar tabla de usuarios (CSV)");
+        Button deleteUserButton = new Button("Eliminar usuario específico");
+
+        Button volverButton = new Button("Volver a selección de usuario");
+        volverButton.setOnAction(e -> volverASeleccionUsuario());
+        volverButton.setStyle("-fx-background-color: #4286f4; -fx-text-fill: white;");
+
+        Button exitButton = new Button("Salir");
+        exitButton.setOnAction(e -> Platform.exit());
+        exitButton.setStyle("-fx-background-color: #ff5252; -fx-text-fill: white;");
+
+        clearUsersButton.setOnAction(e -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("Confirmar");
+            confirm.setHeaderText("¿Estás seguro de que quieres vaciar la tabla de usuarios?");
+            confirm.setContentText("Esta acción no se puede deshacer.");
+            confirm.showAndWait().filter(response -> response == ButtonType.OK).ifPresent(response -> {
+                try {
+                    ReviewUserManager.clearUsers();
+                    showAlert("Éxito", "Tabla de usuarios vaciada correctamente.");
+                } catch (SQLException ex) {
+                    showAlert("Error", "Error al vaciar tabla: " + ex.getMessage());
+                }
+            });
+        });
+
+        exportUsersButton.setOnAction(e -> {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Guardar tabla de usuarios");
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+            File file = fileChooser.showSaveDialog(primaryStage);
+            if (file != null) {
+                try {
+                    ReviewUserManager.exportUsersToCsv(file);
+                    showAlert("Éxito", "Tabla exportada correctamente a " + file.getAbsolutePath());
+                } catch (SQLException | IOException ex) {
+                    showAlert("Error", "Error al exportar tabla: " + ex.getMessage());
+                }
+            }
+        });
+
+        deleteUserButton.setOnAction(e -> {
+            TextInputDialog dialog = new TextInputDialog();
+            dialog.setTitle("Eliminar usuario");
+            dialog.setHeaderText("Ingresa el nombre de usuario a eliminar");
+            dialog.setContentText("Usuario:");
+            dialog.showAndWait().ifPresent(username -> {
+                try {
+                    ReviewUserManager.deleteUser(username);
+                    showAlert("Éxito", "Usuario " + username + " y sus reseñas eliminados correctamente.");
+                } catch (SQLException ex) {
+                    showAlert("Error", "Error al eliminar usuario: " + ex.getMessage());
+                }
+            });
+        });
+
+        adminTab.getChildren().addAll(
+                new Label("Administración"),
+                new Separator(),
+                clearUsersButton,
+                exportUsersButton,
+                deleteUserButton
+        );
+
+        Tab tab = new Tab("Admin", adminTab);
+        tab.setClosable(false);
+        return tab;
     }
 
     private Tab createMusicTab() {
         VBox musicTab = new VBox(15);
         musicTab.setPadding(new Insets(15));
 
-        // Botones originales de OrpheusTUI
         Button loginButton = new Button("Iniciar sesión en Spotify");
         Button addTrackButton = new Button("Añadir canción a biblioteca");
         Button addAlbumButton = new Button("Añadir álbum a biblioteca");
         Button profileButton = new Button("Ver perfil");
-        Button createPlaylistButton = new Button("Crear Playlist");
         Button topTracksButton = new Button("Ver Top Tracks");
         Button topArtistsButton = new Button("Ver Top Artistas");
 
-        // Acciones de los botones (reutilizando métodos existentes)
-        loginButton.setOnAction(event -> {
-            try {
-                SpotifyToken token = SpotifyToken.getValidToken();
-                if (token != null) {
-                    resultArea.setText("Ya estás autenticado con Spotify.");
-                    return;
-                }
-            } catch (SQLException | IOException e) {
-                resultArea.setText("Error al verificar tokens: " + e.getMessage());
-                return;
-            }
+        Button volverButton = new Button("Volver a selección de usuario");
+        volverButton.setOnAction(e -> volverASeleccionUsuario());
+        volverButton.setStyle("-fx-background-color: #4286f4; -fx-text-fill: white;");
 
-            if (!SpotifyClient.isInternetAvailable()) {
-                resultArea.setText("No hay conexión a Internet. Por favor, verifica tu conexión e intenta nuevamente.");
-                return;
-            }
+        Button exitButton = new Button("Salir");
+        exitButton.setOnAction(e -> Platform.exit());
+        exitButton.setStyle("-fx-background-color: #ff5252; -fx-text-fill: white;");
 
-            String scope = URLEncoder.encode(
-                    "user-top-read user-read-recently-played user-library-modify playlist-modify-private",
-                    StandardCharsets.UTF_8
-            );
-            String authUrl = "https://accounts.spotify.com/authorize?" +
-                    "client_id=" + SpotifyClient.CLIENT_ID +
-                    "&response_type=code" +
-                    "&redirect_uri=" + URLEncoder.encode(SpotifyClient.REDIRECT_URI, StandardCharsets.UTF_8) +
-                    "&scope=" + scope +
-                    "&show_dialog=true";
-
-            getHostServices().showDocument(authUrl);
-        });
+        loginButton.setOnAction(event -> triggerSpotifyLogin());
 
         addTrackButton.setOnAction(event -> {
             try {
@@ -241,14 +409,12 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
                 }
 
                 String accessToken = getValidAccessToken();
-                String profile = SpotifyClient.getUserProfile(accessToken);
-                resultArea.setText("Perfil de usuario:\n" + profile);
+                String displayName = SpotifyClient.getUserDisplayName(accessToken);
+                resultArea.setText("Nombre de usuario: " + displayName);
             } catch (SQLException | IOException e) {
                 resultArea.setText("Error al obtener perfil: " + e.getMessage());
             }
         });
-
-        createPlaylistButton.setOnAction(event -> createPlaylistAndAddTracks());
 
         topTracksButton.setOnAction(event -> {
             try {
@@ -278,13 +444,13 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
             }
         });
 
-        // Diseño
         GridPane buttonGrid = new GridPane();
         buttonGrid.setVgap(10);
         buttonGrid.setHgap(10);
         buttonGrid.addRow(0, loginButton, addTrackButton, addAlbumButton);
-        buttonGrid.addRow(1, profileButton, createPlaylistButton, topTracksButton);
-        buttonGrid.addRow(2, topArtistsButton);
+        buttonGrid.addRow(1, profileButton, topTracksButton, topArtistsButton);
+
+        buttonGrid.addRow(2, volverButton, exitButton);
 
         musicTab.getChildren().addAll(
                 new Label("Música"),
@@ -301,16 +467,13 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         VBox socialTab = new VBox(15);
         socialTab.setPadding(new Insets(15));
 
-        // Tabla de usuarios
         initializeUsersTable();
 
-        // Botones
         Button searchUsersButton = new Button("Buscar usuarios");
         Button followUserButton = new Button("Seguir usuario seleccionado");
         Button unfollowUserButton = new Button("Dejar de seguir");
         Button friendActivityButton = new Button("Ver actividad de amigos");
 
-        // Acciones
         searchUsersButton.setOnAction(e -> searchUsersDialog());
         followUserButton.setOnAction(e -> followSelectedUser());
         unfollowUserButton.setOnAction(e -> unfollowSelectedUser());
@@ -338,29 +501,45 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
     private Tab createReviewsTab() {
         VBox reviewsTab = new VBox(15);
         reviewsTab.setPadding(new Insets(15));
-
-        // Tabla de reseñas
-        initializeReviewsTable();
-
-        // Botones
         Button leaveReviewButton = new Button("Dejar reseña");
         Button searchReviewsButton = new Button("Buscar reseñas por canción");
         Button trendingReviewsButton = new Button("Reseñas populares");
+        Button loginButton = new Button("Iniciar sesión en Spotify");
 
-        // Acciones
         leaveReviewButton.setOnAction(e -> leaveReviewDialog());
         searchReviewsButton.setOnAction(e -> searchReviewsDialog());
         trendingReviewsButton.setOnAction(e -> showTrendingReviews());
+        loginButton.setOnAction(e -> triggerSpotifyLogin());
+
+        HBox buttonBox = new HBox(15, leaveReviewButton, searchReviewsButton, trendingReviewsButton);
+        if (currentUserId == -1) {
+            buttonBox.getChildren().add(loginButton);
+        }
+
+        // Initialize reviews table
+        initializeSongReviewsTable();
 
         reviewsTab.getChildren().addAll(
-                new HBox(15, leaveReviewButton, searchReviewsButton, trendingReviewsButton),
+                buttonBox,
                 new Separator(),
                 new Label("Reseñas"),
                 reviewsTable
         );
 
+        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
+            if (newTab == tabPane.getTabs().get(2)) {
+                buttonBox.getChildren().remove(loginButton);
+                if (currentUserId == -1) {
+                    buttonBox.getChildren().add(loginButton);
+                }
+                // Refresh reviews when tab is selected
+                refreshSongReviewsTable();
+            }
+        });
+
         Tab tab = new Tab("Reseñas", reviewsTab);
         tab.setClosable(false);
+        tab.setId("reviewsTab");
         return tab;
     }
 
@@ -399,40 +578,48 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         usersTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
     }
 
-    private void initializeReviewsTable() {
-        TableColumn<ReviewManager.Review, String> userCol = new TableColumn<>("Usuario");
-        userCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().username));
+    private void initializeSongReviewsTable() {
+        TableColumn<ReviewManager.Review, Number> idCol = new TableColumn<>("ID");
+        idCol.setCellValueFactory(cd -> new SimpleIntegerProperty(cd.getValue().id));
 
-        TableColumn<ReviewManager.Review, String> trackCol = new TableColumn<>("Canción");
-        trackCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().trackName));
+        TableColumn<ReviewManager.Review, String> trackIdCol = new TableColumn<>("Track ID");
+        trackIdCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().trackId));
+
+        TableColumn<ReviewManager.Review, String> trackNameCol = new TableColumn<>("Canción");
+        trackNameCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().trackName));
+
+        TableColumn<ReviewManager.Review, String> reviewUsernameCol = new TableColumn<>("Usuario");
+        reviewUsernameCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().reviewUsername));
+
+        TableColumn<ReviewManager.Review, String> reviewTextCol = new TableColumn<>("Reseña");
+        reviewTextCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().reviewText));
 
         TableColumn<ReviewManager.Review, Number> ratingCol = new TableColumn<>("Rating");
         ratingCol.setCellValueFactory(cd -> new SimpleIntegerProperty(cd.getValue().rating));
 
-        TableColumn<ReviewManager.Review, String> reviewCol = new TableColumn<>("Reseña");
-        reviewCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().reviewText));
+        TableColumn<ReviewManager.Review, Number> usefulVotesCol = new TableColumn<>("Útil");
+        usefulVotesCol.setCellValueFactory(cd -> new SimpleIntegerProperty(cd.getValue().usefulVotes));
 
-        TableColumn<ReviewManager.Review, Number> usefulCol = new TableColumn<>("Útil");
-        usefulCol.setCellValueFactory(cd -> new SimpleIntegerProperty(cd.getValue().usefulVotes));
+        TableColumn<ReviewManager.Review, Number> notUsefulVotesCol = new TableColumn<>("No útil");
+        notUsefulVotesCol.setCellValueFactory(cd -> new SimpleIntegerProperty(cd.getValue().notUsefulVotes));
 
-        TableColumn<ReviewManager.Review, Number> notUsefulCol = new TableColumn<>("No útil");
-        notUsefulCol.setCellValueFactory(cd -> new SimpleIntegerProperty(cd.getValue().notUsefulVotes));
+        TableColumn<ReviewManager.Review, String> createdAtCol = new TableColumn<>("Fecha");
+        createdAtCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getFormattedDate()));
 
-        TableColumn<ReviewManager.Review, String> dateCol = new TableColumn<>("Fecha");
-        dateCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getFormattedDate()));
-
-        reviewsTable.getColumns().setAll(userCol, trackCol, ratingCol, reviewCol, usefulCol, notUsefulCol, dateCol);
+        reviewsTable.getColumns().setAll(idCol, trackIdCol, trackNameCol, reviewUsernameCol, reviewTextCol, ratingCol, usefulVotesCol, notUsefulVotesCol, createdAtCol);
         reviewsTable.setItems(reviewsData);
         reviewsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
+        // In initializeSongReviewsTable, update vote buttons
         TableColumn<ReviewManager.Review, Void> voteUsefulCol = new TableColumn<>("Útil");
         voteUsefulCol.setCellFactory(col -> new TableCell<>() {
             private final Button btn = new Button("👍");
             {
                 btn.setOnAction(e -> {
                     ReviewManager.Review review = getTableView().getItems().get(getIndex());
-                    voteSystem.handleVote(review.id, currentUserId, true);
+                    voteSystem.handleVote(review.id, currentUserId == -1 ? null : currentUserId, currentReviewUser != null ? currentReviewUser.id : null);
                 });
+                btn.setDisable(currentReviewUser == null && currentUserId == -1);
             }
             @Override
             protected void updateItem(Void item, boolean empty) {
@@ -447,8 +634,9 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
             {
                 btn.setOnAction(e -> {
                     ReviewManager.Review review = getTableView().getItems().get(getIndex());
-                    voteSystem.handleVote(review.id, currentUserId, false);
+                    voteSystem.handleVote(review.id, currentUserId == -1 ? null : currentUserId, currentReviewUser != null ? currentReviewUser.id : null);
                 });
+                btn.setDisable(currentReviewUser == null && currentUserId == -1);
             }
             @Override
             protected void updateItem(Void item, boolean empty) {
@@ -458,6 +646,12 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         });
 
         reviewsTable.getColumns().addAll(voteUsefulCol, voteNotUsefulCol);
+
+        // Set preferred height to ensure visibility
+        reviewsTable.setPrefHeight(400);
+        reviewsTable.setMinHeight(200);
+
+        refreshSongReviewsTable();
     }
 
     private void configureSpotifyCallback() {
@@ -472,20 +666,16 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
 
                     SpotifyToken token = new SpotifyToken(currentAccessToken, expiresIn, refreshToken);
                     token.save();
+                    System.out.println("Token guardado: accessToken=" + currentAccessToken + ", refreshToken=" + refreshToken);
 
-                    String userProfileJson = SpotifyClient.getUserProfile(currentAccessToken);
+                    currentRefreshToken = refreshToken;
+
+                    String userProfileJson = SpotifyClient.getUserProfileJson(currentAccessToken);
                     org.json.JSONObject userProfile = new org.json.JSONObject(userProfileJson);
                     String spotifyId = userProfile.getString("id");
                     String username = userProfile.optString("display_name", spotifyId);
                     String avatarUrl = userProfile.has("images") && !userProfile.getJSONArray("images").isEmpty() ?
-                            userProfile.getJSONArray("images").getJSONObject(0).getString("url") :
-                            DEFAULT_AVATAR;
-
-                    // Pedir nombre de usuario único para reseñas
-                    String reviewUsername = obtenerONuevoNombreDeUsuario(spotifyId);
-
-                    // Guardar usuario (implementa este método si no existe)
-                    guardarUsuario(spotifyId, reviewUsername, currentAccessToken, refreshToken, "spotify");
+                            userProfile.getJSONArray("images").getJSONObject(0).getString("url") : DEFAULT_AVATAR;
 
                     currentUserId = UserManager.getOrCreateUser(spotifyId, username, avatarUrl);
                     currentUsername = username;
@@ -493,16 +683,80 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
 
                     Platform.runLater(() -> {
                         ((ImageView)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(0)).setImage(new Image(currentAvatarUrl));
-                       ((Label)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(1)).setText(currentUsername);
-                        resultArea.setText("¡Bienvenido, " + currentUsername + "!");
+                        ((Label)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(1)).setText(currentUsername);
+                        resultArea.setText("¡Bienvenido, " + currentUsername + "! User ID: " + currentUserId);
+                        System.out.println("UI actualizada: userId=" + currentUserId + ", accessToken=" + currentAccessToken);
+                        HBox buttonBox = (HBox) ((VBox) tabPane.getTabs().get(2).getContent()).getChildren().get(0);
+                        buttonBox.getChildren().removeIf(node -> node instanceof Button && ((Button) node).getText().equals("Iniciar sesión en Spotify"));
                     });
-
                 } catch (IOException | SQLException e) {
                     Platform.runLater(() -> resultArea.setText("Error en login: " + e.getMessage()));
+                    e.printStackTrace();
                 }
+            } else {
+                Platform.runLater(() -> resultArea.setText("Error en autenticación: Código de autorización no recibido."));
             }
             return "Puedes cerrar esta ventana.";
         });
+    }
+
+    private void triggerSpotifyLogin() {
+        try {
+            SpotifyToken token = SpotifyToken.getValidToken();
+            if (token != null) {
+                currentAccessToken = token.getAccessToken();
+                String userProfileJson = SpotifyClient.getUserProfileJson(currentAccessToken);
+                org.json.JSONObject userProfile = new org.json.JSONObject(userProfileJson);
+                String spotifyId = userProfile.getString("id");
+                String username = userProfile.optString("display_name", spotifyId);
+                String avatarUrl =
+                        userProfile.has("images") && !userProfile.getJSONArray("images").isEmpty() ?
+                                userProfile.getJSONArray("images").getJSONObject(0)
+                                        .getString("url") : DEFAULT_AVATAR;
+
+                System.out.println("Intentando obtener/crear usuario con spotifyId: " + spotifyId);
+                currentUserId = UserManager.getOrCreateUser(spotifyId, username, avatarUrl);
+                System.out.println("Usuario creado/Obtenido con ID: " + currentUserId);
+                System.out.println(currentAvatarUrl);
+                currentUsername = username;
+                currentAvatarUrl = avatarUrl;
+
+                Platform.runLater(() -> {
+                    ((ImageView) ((HBox) ((BorderPane) primaryStage.getScene()
+                            .getRoot()).getTop()).getChildren().get(0)).setImage(
+                            new Image(currentAvatarUrl));
+                    ((Label) ((HBox) ((BorderPane) primaryStage.getScene()
+                            .getRoot()).getTop()).getChildren().get(1)).setText(currentUsername);
+                    resultArea.setText(
+                            "Ya estás autenticado con Spotify. User ID: " + currentUserId);
+                    HBox buttonBox = (HBox) ((VBox) tabPane.getTabs().get(2)
+                            .getContent()).getChildren().get(0);
+                    buttonBox.getChildren().removeIf(
+                            node -> node instanceof Button && ((Button) node).getText()
+                                    .equals("Iniciar sesión en Spotify"));
+                });
+                return;
+            }
+        } catch (SQLException | IOException e) {
+            resultArea.setText("Error al verificar tokens: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        if (!SpotifyClient.isInternetAvailable()) {
+            resultArea.setText(
+                    "No hay conexión a Internet. Por favor, verifica tu conexión e intenta nuevamente.");
+            return;
+        }
+
+        String scope = URLEncoder.encode(
+                "user-top-read user-read-recently-played user-library-modify playlist-modify-private",
+                StandardCharsets.UTF_8);
+        String authUrl = "https://accounts.spotify.com/authorize?" + "client_id=" + SpotifyClient.CLIENT_ID + "&response_type=code" + "&redirect_uri=" + URLEncoder.encode(
+                SpotifyClient.REDIRECT_URI,
+                StandardCharsets.UTF_8) + "&scope=" + scope + "&show_dialog=true";
+
+        getHostServices().showDocument(authUrl);
+
     }
 
     private void displayTopTracks(String accessToken) throws IOException {
@@ -551,70 +805,14 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         }
     }
 
-    private void createPlaylistAndAddTracks() {
-        try {
-            if (!SpotifyClient.isInternetAvailable()) {
-                resultArea.setText("No hay conexión a Internet.");
-                return;
-            }
-
-            String accessToken = getValidAccessToken();
-            TextInputDialog playlistDialog = new TextInputDialog();
-            playlistDialog.setTitle("Crear Playlist");
-            playlistDialog.setHeaderText("Introduce el nombre de la playlist");
-            playlistDialog.setContentText("Nombre:");
-            String playlistName = playlistDialog.showAndWait().orElse(null);
-
-            if (playlistName == null || playlistName.isEmpty()) {
-                resultArea.setText("Nombre de playlist no proporcionado.");
-                return;
-            }
-
-            String playlistId = SpotifyPlaylistManager.createPlaylist(accessToken, playlistName, "Playlist creada desde Orpheus");
-            TextInputDialog tracksDialog = new TextInputDialog();
-            tracksDialog.setTitle("Agregar Canciones");
-            tracksDialog.setHeaderText("Introduce los nombres de las canciones separados por comas");
-            tracksDialog.setContentText("Nombress:");
-            String trackUrisInput = tracksDialog.showAndWait().orElse(null);
-
-            if (trackUrisInput == null || trackUrisInput.isEmpty()) {
-                resultArea.setText("No se proporcionaron canciones.");
-                return;
-            }
-
-            List<String> trackUris = List.of(trackUrisInput.split(","));
-            SpotifyPlaylistManager.addTracksToPlaylist(accessToken, playlistId, trackUris);
-            resultArea.setText("Playlist creada y canciones añadidas exitosamente.");
-        } catch (IOException | SQLException e) {
-            resultArea.setText("Error al crear la playlist o agregar canciones: " + e.getMessage());
-//            Minority
-        }
-    }
-
     private String getValidAccessToken() throws SQLException, IOException {
         SpotifyToken token = SpotifyToken.getValidToken();
         if (token == null) {
+            System.out.println("No se encontró un token válido en la base de datos");
             throw new IOException("No token available. Please login first.");
         }
+        System.out.println("Token recuperado: " + token.getAccessToken());
         return token.getAccessToken();
-    }
-
-    private String obtenerONuevoNombreDeUsuario(String spotifyId) throws SQLException {
-        String url = "jdbc:postgresql://localhost:5433/spotify_auth";
-        String user = "orpheusers";
-        String password = "munyun214";
-        String sql = "SELECT review_username FROM usuarios WHERE id = ?";
-        try (Connection conn = DriverManager.getConnection(url, user, password);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, spotifyId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next() && rs.getString(1) != null) {
-                    return rs.getString(1);
-                }
-            }
-        }
-        // Si no existe, pedirlo
-        return solicitarNombreDeUsuarioUnico();
     }
 
     private void eliminarUsuario() throws SQLException {
@@ -630,7 +828,7 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
 
     @Override
     public void onVoteSuccess() {
-        refreshReviewsTable();
+        refreshSongReviewsTable();
         showAlert("Éxito", "Tu voto se registró correctamente");
     }
 
@@ -639,11 +837,11 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         showAlert("Error", "No se pudo registrar el voto: " + errorMessage);
     }
 
-    private void refreshReviewsTable() {
+    private void refreshSongReviewsTable() {
         try {
-            reviewsData.setAll(ReviewManager.getTrendingReviews(20));
+            reviewsData.setAll(ReviewManager.getAllSongReviews());
         } catch (SQLException e) {
-            showAlert("Error", "No se pudieron cargar las reseñas: " + e.getMessage());
+            Platform.runLater(() -> showAlert("Error", "No se pudieron cargar las reseñas: " + e.getMessage()));
         }
     }
 
@@ -658,87 +856,223 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
     }
 
     private void leaveReviewDialog() {
-        if (!checkAuth()) return;
+        if (currentReviewUser == null && !isAdminMode) {
+            showAlert("Error", "Debes iniciar sesión como usuario de reseñas.");
+            return;
+        }
 
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("Dejar reseña");
-        dialog.setHeaderText("Ingresa el nombre de la canción");
-        dialog.setContentText("Canción:");
+        // Prompt for review username
+        TextInputDialog usernameDialog = new TextInputDialog(currentReviewUser != null ? currentReviewUser.username : "");
+        usernameDialog.setTitle("Nombre de usuario");
+        usernameDialog.setHeaderText("Ingresa el nombre de usuario para la reseña");
+        usernameDialog.setContentText("Usuario:");
+        Optional<String> usernameResult = usernameDialog.showAndWait();
 
-        Optional<String> result = dialog.showAndWait();
-        result.ifPresent(trackName -> {
-            new Thread(() -> {
+        if (!usernameResult.isPresent() || usernameResult.get().trim().isEmpty()) {
+            showAlert("Error", "Debes proporcionar un nombre de usuario.");
+            return;
+        }
+
+        String reviewUsername = usernameResult.get().trim();
+        ReviewUserManager.ReviewUser reviewUser = null;
+
+        try {
+            reviewUser = ReviewUserManager.getUserByUsername(reviewUsername);
+            if (reviewUser == null) {
+                showAlert("Error", "El nombre de usuario no existe.");
+                return;
+            }
+
+            // If username matches current review user, proceed
+            if (currentReviewUser != null && reviewUser.id == currentReviewUser.id) {
+                // Proceed to review dialog
+            } else {
+                // Prompt for password
+                TextInputDialog passwordDialog = new TextInputDialog();
+                passwordDialog.setTitle("Verificación");
+                passwordDialog.setHeaderText("Ingresa la contraseña para " + reviewUsername);
+                passwordDialog.setContentText("Contraseña:");
+                Optional<String> passwordResult = passwordDialog.showAndWait();
+
+                if (!passwordResult.isPresent() || passwordResult.get().isEmpty()) {
+                    showAlert("Error", "Debes ingresar una contraseña.");
+                    return;
+                }
+
                 try {
-                    String trackId = SpotifyClient.searchTrackIdByName(trackName, currentAccessToken);
-                    JsonObject track = SpotifyClient.getTrackInfo(trackId, currentAccessToken);
-                    String fullTrackName = track.get("name").getAsString() + " - ";
+                    ReviewUserManager.loginUser(reviewUsername, passwordResult.get());
+                } catch (SQLException e) {
+                    showAlert("Error", "Contraseña incorrecta para " + reviewUsername);
+                    return;
+                }
+            }
+        } catch (SQLException e) {
+            showAlert("Error", "Error al verificar usuario: " + e.getMessage());
+            return;
+        }
 
-                    JsonArray artists = track.getAsJsonArray("artists");
-                    for (int i = 0; i < artists.size(); i++) {
-                        if (i > 0) fullTrackName += ", ";
-                        fullTrackName += artists.get(i).getAsJsonObject().get("name").getAsString();
-                    }
+        final ReviewUserManager.ReviewUser finalReviewUser = reviewUser;
+        Dialog<Pair<String, String>> trackDialog = new Dialog<>();
+        trackDialog.setTitle("Dejar reseña");
+        trackDialog.setHeaderText("Ingresa los detalles de la canción");
 
-                    String albumCover = SpotifyClient.getAlbumCoverUrl(trackId, currentAccessToken);
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new Insets(20, 150, 10, 10));
 
-                    String finalFullTrackName = fullTrackName;
-                    String finalFullTrackName1 = fullTrackName;
+        TextField trackIdField = new TextField();
+        trackIdField.setPromptText("Spotify Track ID (e.g., 4uUG5triady4h6WJeZUFw9)");
+        TextField trackNameField = new TextField();
+        trackNameField.setPromptText("Nombre de la canción (ej., Bohemian Rhapsody)");
+        CheckBox useSpotifySearch = new CheckBox("Buscar con Spotify (requiere login)");
+
+        grid.add(new Label("Track ID (opcional):"), 0, 0);
+        grid.add(trackIdField, 1, 0);
+        grid.add(new Label("Nombre de la canción:"), 0, 1);
+        grid.add(trackNameField, 1, 1);
+        grid.add(useSpotifySearch, 1, 2);
+
+        trackDialog.getDialogPane().setContent(grid);
+        trackDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        trackDialog.setResultConverter(buttonType -> {
+            if (buttonType == ButtonType.OK) {
+                return new Pair<>(trackIdField.getText(), trackNameField.getText());
+            }
+            return null;
+        });
+
+        Optional<Pair<String, String>> trackResult = trackDialog.showAndWait();
+        trackResult.ifPresent(track -> {
+            String trackId = track.getKey().trim();
+            String trackName = track.getValue().trim();
+
+            if (trackName.isEmpty()) {
+                Platform.runLater(() -> showAlert("Error", "Debes proporcionar un nombre de canción."));
+                return;
+            }
+
+            if (trackId.length() > 255) {
+                Platform.runLater(() -> showAlert("Error", "El Track ID no debe exceder los 255 caracteres."));
+                return;
+            }
+
+            if (!trackId.isEmpty() && !trackId.matches("[a-zA-Z0-9_-]+")) {
+                Platform.runLater(() -> showAlert("Error", "El Track ID contiene caracteres inválidos."));
+                return;
+            }
+
+            if (useSpotifySearch.isSelected()) {
+                if (currentUserId == -1 || currentAccessToken.isEmpty()) {
                     Platform.runLater(() -> {
-                        Dialog<Pair<String, Integer>> reviewDialog = new Dialog<>();
-                        reviewDialog.setTitle("Nueva reseña");
-                        reviewDialog.setHeaderText("Reseña para: " + finalFullTrackName1);
-
-                        // Configurar contenido del diálogo
-                        GridPane grid = new GridPane();
-                        grid.setHgap(10);
-                        grid.setVgap(10);
-                        grid.setPadding(new Insets(20, 150, 10, 10));
-
-                        TextArea reviewText = new TextArea();
-                        reviewText.setPromptText("Escribe tu reseña...");
-
-                        Spinner<Integer> ratingSpinner = new Spinner<>(1, 5, 5);
-
-                        if (albumCover != null) {
-                            ImageView albumCoverView = new ImageView(new Image(albumCover, 100, 100, true, true));
-                            grid.add(albumCoverView, 0, 0, 1, 3);
-                        }
-
-                        grid.add(new Label("Reseña:"), albumCover != null ? 1 : 0, 0);
-                        grid.add(reviewText, albumCover != null ? 1 : 0, 1);
-                        grid.add(new Label("Rating (1-5):"), albumCover != null ? 1 : 0, 2);
-                        grid.add(ratingSpinner, albumCover != null ? 2 : 1, 2);
-
-                        reviewDialog.getDialogPane().setContent(grid);
-                        reviewDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
-
-                        reviewDialog.setResultConverter(buttonType -> {
-                            if (buttonType == ButtonType.OK) {
-                                return new Pair<>(reviewText.getText(), ratingSpinner.getValue());
-                            }
-                            return null;
-                        });
-
-                        Optional<Pair<String, Integer>> reviewResult = reviewDialog.showAndWait();
-                        reviewResult.ifPresent(review -> {
-                            new Thread(() -> {
-                                try {
-                                    ReviewManager.addReview(trackId, finalFullTrackName, currentUserId, review.getKey(), review.getValue());
-                                    Platform.runLater(() -> resultArea.setText("¡Reseña publicada con éxito!")
-                                    );
-                                } catch (SQLException e) {
-                                    Platform.runLater(() -> resultArea.setText("Error al publicar reseña: " + e.getMessage())
-                                    );
-                                }
-                            }).start();
+                        Alert alert = new Alert(Alert.AlertType.WARNING);
+                        alert.setTitle("Autenticación requerida");
+                        alert.setHeaderText("Debes iniciar sesión en Spotify para buscar canciones");
+                        alert.setContentText("Inicia sesión con Spotify o ingresa el Track ID manualmente.");
+                        ButtonType loginButton = new ButtonType("Iniciar sesión");
+                        ButtonType cancelButton = new ButtonType("Cancelar", ButtonBar.ButtonData.CANCEL_CLOSE);
+                        alert.getButtonTypes().setAll(loginButton, cancelButton);
+                        alert.showAndWait().filter(response -> response == loginButton).ifPresent(response -> {
+                            triggerSpotifyLogin();
                         });
                     });
-
-                } catch (IOException e) {
-                    Platform.runLater(() -> resultArea.setText("Error al buscar canción: " + e.getMessage())
-                    );
+                    return;
                 }
-            }).start();
+
+                new Thread(() -> {
+                    try {
+                        String searchedTrackId = SpotifyClient.searchTrackIdByName(trackName, currentAccessToken);
+                        if (searchedTrackId == null) {
+                            Platform.runLater(() -> showAlert("Error", "No se encontró ninguna canción con el nombre proporcionado."));
+                            return;
+                        }
+                        JsonObject trackInfo = SpotifyClient.getTrackInfo(searchedTrackId, currentAccessToken);
+                        String fullTrackName = trackInfo.get("name").getAsString() + " - ";
+
+                        JsonArray artists = trackInfo.getAsJsonArray("artists");
+                        for (int i = 0; i < artists.size(); i++) {
+                            if (i > 0) fullTrackName += ", ";
+                            fullTrackName += artists.get(i).getAsJsonObject().get("name").getAsString();
+                        }
+
+                        String albumCover = SpotifyClient.getAlbumCoverUrl(searchedTrackId, currentAccessToken);
+
+                        String finalTrackId = searchedTrackId;
+                        String finalTrackName = fullTrackName;
+                        showReviewDialog(finalTrackId, finalTrackName, finalReviewUser, albumCover);
+                    } catch (IOException e) {
+                        Platform.runLater(() -> showAlert("Error", "Error al buscar canción: " + e.getMessage()));
+                        e.printStackTrace();
+                    }
+                }).start();
+            } else {
+                if (trackId.isEmpty()) {
+                    trackId = "unknown_" + UUID.randomUUID().toString().replaceAll("-", "").substring(0, 16);
+                }
+                showReviewDialog(trackId, trackName, finalReviewUser, null);
+            }
+        });
+    }
+
+    private void showReviewDialog(String trackId, String trackName, ReviewUserManager.ReviewUser reviewUser, String albumCover) {
+        Platform.runLater(() -> {
+            Dialog<Pair<String, Integer>> reviewDialog = new Dialog<>();
+            reviewDialog.setTitle("Nueva reseña");
+            reviewDialog.setHeaderText("Reseña para: " + trackName);
+
+            GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(10);
+            grid.setPadding(new Insets(20, 150, 10, 10));
+
+            TextArea reviewText = new TextArea();
+            reviewText.setPromptText("Escribe tu reseña...");
+            Spinner<Integer> ratingSpinner = new Spinner<>(1, 5, 5);
+
+            if (albumCover != null) {
+                ImageView albumCoverView = new ImageView(new Image(albumCover, 100, 100, true, true));
+                grid.add(albumCoverView, 0, 0, 1, 3);
+            }
+
+            grid.add(new Label("Reseña:"), albumCover != null ? 1 : 0, 0);
+            grid.add(reviewText, albumCover != null ? 1 : 0, 1);
+            grid.add(new Label("Rating (1-5):"), albumCover != null ? 1 : 0, 2);
+            grid.add(ratingSpinner, albumCover != null ? 2 : 1, 2);
+
+            reviewDialog.getDialogPane().setContent(grid);
+            reviewDialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+            reviewDialog.setResultConverter(buttonType -> {
+                if (buttonType == ButtonType.OK) {
+                    return new Pair<>(reviewText.getText(), ratingSpinner.getValue());
+                }
+                return null;
+            });
+
+            Optional<Pair<String, Integer>> reviewResult = reviewDialog.showAndWait();
+            reviewResult.ifPresent(review -> {
+                new Thread(() -> {
+                    try {
+                        ReviewManager.addReview(
+                                trackId,
+                                trackName,
+                                currentUserId == -1 ? null : currentUserId,
+                                reviewUser.id,
+                                review.getKey(),
+                                review.getValue(),
+                                reviewUser.username
+                        );
+                        Platform.runLater(() -> {
+                            resultArea.setText("¡Reseña publicada con éxito!");
+                            refreshSongReviewsTable();
+                        });
+                    } catch (SQLException e) {
+                        Platform.runLater(() -> showAlert("Error", "Error al publicar reseña: " + e.getMessage()));
+                        e.printStackTrace();
+                    }
+                }).start();
+            });
         });
     }
 
@@ -750,6 +1084,20 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
 
         Optional<String> result = dialog.showAndWait();
         result.ifPresent(trackName -> {
+            if (currentUserId == -1 || currentAccessToken.isEmpty()) {
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(Alert.AlertType.WARNING);
+                    alert.setTitle("Autenticación requerida");
+                    alert.setHeaderText("Debes iniciar sesión para buscar con Spotify");
+                    alert.setContentText("Inicia sesión con Spotify para buscar canciones.");
+                    ButtonType loginButton = new ButtonType("Iniciar sesión");
+                    ButtonType cancelButton = new ButtonType("Cancelar", ButtonBar.ButtonData.CANCEL_CLOSE);
+                    alert.getButtonTypes().setAll(loginButton, cancelButton);
+                    alert.showAndWait().filter(response -> response == loginButton).ifPresent(response -> triggerSpotifyLogin());
+                });
+                return;
+            }
+
             new Thread(() -> {
                 try {
                     String trackId = SpotifyClient.searchTrackIdByName(trackName, currentAccessToken);
@@ -760,11 +1108,8 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
                         reviewsData.addAll(reviews);
                         resultArea.setText("Mostrando " + reviews.size() + " reseñas para '" + trackName + "'");
                     });
-
                 } catch (IOException | SQLException e) {
-                    Platform.runLater(() ->
-                                              resultArea.setText("Error al buscar reseñas: " + e.getMessage())
-                    );
+                    Platform.runLater(() -> showAlert("Error", "Error al buscar reseñas: " + e.getMessage()));
                 }
             }).start();
         });
@@ -780,9 +1125,7 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
                     resultArea.setText("Reseñas populares");
                 });
             } catch (SQLException e) {
-                Platform.runLater(() ->
-                                          resultArea.setText("Error al obtener reseñas: " + e.getMessage())
-                );
+                Platform.runLater(() -> showAlert("Error", "Error al obtener reseñas: " + e.getMessage()));
             }
         }).start();
     }
@@ -804,7 +1147,7 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
                         resultArea.setText("Mostrando " + users.size() + " resultados para '" + query + "'");
                     });
                 } catch (SQLException e) {
-                    Platform.runLater(() -> resultArea.setText("Error al buscar usuarios: " + e.getMessage()));
+                    Platform.runLater(() -> showAlert("Error", "Error al buscar usuarios: " + e.getMessage()));
                 }
             }).start();
         });
@@ -825,13 +1168,9 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         new Thread(() -> {
             try {
                 UserManager.followUser(currentUserId, selected.id);
-                Platform.runLater(() ->
-                                          resultArea.setText("Ahora sigues a " + selected.username)
-                );
+                Platform.runLater(() -> resultArea.setText("Ahora sigues a " + selected.username));
             } catch (SQLException e) {
-                Platform.runLater(() ->
-                                          resultArea.setText("Error al seguir usuario: " + e.getMessage())
-                );
+                Platform.runLater(() -> showAlert("Error", "Error al seguir usuario: " + e.getMessage()));
             }
         }).start();
     }
@@ -851,13 +1190,9 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         new Thread(() -> {
             try {
                 UserManager.unfollowUser(currentUserId, selected.id);
-                Platform.runLater(() ->
-                                          resultArea.setText("Has dejado de seguir a " + selected.username)
-                );
+                Platform.runLater(() -> resultArea.setText("Has dejado de seguir a " + selected.username));
             } catch (SQLException e) {
-                Platform.runLater(() ->
-                                          resultArea.setText("Error al dejar de seguir: " + e.getMessage())
-                );
+                Platform.runLater(() -> showAlert("Error", "Error al dejar de seguir: " + e.getMessage()));
             }
         }).start();
     }
@@ -880,81 +1215,57 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
 
                 Platform.runLater(() -> resultArea.setText(sb.toString()));
             } catch (SQLException e) {
-                Platform.runLater(() ->
-                                          resultArea.setText("Error al obtener actividad: " + e.getMessage())
-                );
+                Platform.runLater(() -> showAlert("Error", "Error al obtener actividad: " + e.getMessage()));
             }
         }).start();
     }
 
-    private boolean checkAuth() {
-        if (currentUserId == 0) {
-            resultArea.setText("Debes iniciar sesión primero");
-            return false;
-        }
-        return true;
-    }
-
-    private void guardarUsuario(String id, String reviewUsername, String accessToken, String refreshToken, String tipo) throws SQLException {
-        String url = "jdbc:postgresql://localhost:5433/spotify_auth";
+    private String solicitarNombreDeUsuarioUnico() throws SQLException {
+        String url = "jdbc:postgresql://localhost:5433/reviews_db";
         String user = "orpheusers";
         String password = "munyun214";
-        String sql = "INSERT INTO usuarios (id, review_username, access_token, refresh_token, tipo) VALUES (?, ?, ?, ?, ?) " +
-                "ON CONFLICT (id) DO UPDATE SET review_username = EXCLUDED.review_username, access_token = EXCLUDED.access_token, refresh_token = EXCLUDED.refresh_token, tipo = EXCLUDED.tipo";
-        try (Connection conn = DriverManager.getConnection(url, user, password);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, id);
-            stmt.setString(2, reviewUsername);
-            stmt.setString(3, accessToken);
-            stmt.setString(4, refreshToken);
-            stmt.setString(5, tipo);
-            stmt.executeUpdate();
-        }
-    }
 
-    private String solicitarNombreDeUsuarioUnico() throws SQLException {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Nombre de usuario");
+        dialog.setHeaderText("Elige un nombre de usuario único para tu reseña");
+        dialog.setContentText("Nombre de usuario:");
+
         while (true) {
-            TextInputDialog dialog = new TextInputDialog();
-            dialog.setTitle("Nombre de usuario");
-            dialog.setHeaderText("Elige un nombre de usuario único para tus reseñas");
-            dialog.setContentText("Nombre de usuario:");
             Optional<String> result = dialog.showAndWait();
             if (result.isPresent() && !result.get().trim().isEmpty()) {
                 String username = result.get().trim();
-                if (!existeNombreDeUsuario(username)) {
-                    return username;
-                } else {
-                    showAlert("Error", "Ese nombre de usuario ya está en uso. Elige otro.");
+                String sql = "SELECT 1 FROM song_reviews WHERE review_username = ?";
+                try (Connection conn = DriverManager.getConnection(url, user, password);
+                     PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, username);
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        if (!rs.next()) {
+                            return username;
+                        } else {
+                            Platform.runLater(() -> showAlert("Error", "Ese nombre de usuario ya está en uso. Elige otro."));
+                        }
+                    }
+                } catch (SQLException e) {
+                    Platform.runLater(() -> showAlert("Error", "Error al verificar nombre de usuario: " + e.getMessage()));
+                    throw e;
                 }
             } else {
-                showAlert("Error", "Debes ingresar un nombre de usuario.");
+                Platform.runLater(() -> showAlert("Error", "Debes ingresar un nombre de usuario."));
+                return null;
             }
         }
     }
+    private void volverASeleccionUsuario() {
+        // Cerrar la ventana actual
+        primaryStage.close();
 
-    private boolean existeNombreDeUsuario(String username) throws SQLException {
-        String url = "jdbc:postgresql://localhost:5433/spotify_auth";
-        String user = "orpheusers";
-        String password = "munyun214";
-        String sql = "SELECT 1 FROM usuarios WHERE review_username = ?";
-        try (Connection conn = DriverManager.getConnection(url, user, password);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, username);
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next();
+        // Iniciar una nueva instancia de la aplicación
+        Platform.runLater(() -> {
+            try {
+                new OrpheusTUI().start(new Stage());
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-        }
-    }
-
-    private void incrementarContadorReseñas(String userId) throws SQLException {
-        String url = "jdbc:postgresql://localhost:5433/spotify_auth";
-        String user = "orpheusers";
-        String password = "munyun214";
-        String sql = "UPDATE usuarios SET review_count = review_count + 1 WHERE id = ?";
-        try (Connection conn = DriverManager.getConnection(url, user, password);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, userId);
-            stmt.executeUpdate();
-        }
+        });
     }
 }

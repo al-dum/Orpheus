@@ -9,26 +9,16 @@ import java.util.Base64;
 import java.util.List;
 import okhttp3.*;
 
-/**
- * Centralized client for Spotify API calls.
- * This class handles all communication with the Spotify API using OkHttp.
- */
 public class SpotifyClient {
     public static final String CLIENT_ID = "0e003a2eb0a7493c86917c5bc3eb5297";
     private static final String CLIENT_SECRET = "70e4f66551b84356aad1105e620e6933";
     public static final String REDIRECT_URI = "http://localhost:8080/callback";
     private static final String API_BASE_URL = "https://api.spotify.com/v1";
     private static final String AUTH_URL = "https://accounts.spotify.com/api/token";
-
     private static final OkHttpClient client = configureClientWithSystemProxy();
 
-    /**
-     * Configures OkHttp client with system proxy settings.
-     */
     public static OkHttpClient configureClientWithSystemProxy() {
         OkHttpClient.Builder builder = new OkHttpClient.Builder();
-
-        // Optional: Handle proxy authentication via environment variables
         String proxyUser = System.getenv("PROXY_USER");
         String proxyPass = System.getenv("PROXY_PASS");
         if (proxyUser != null && proxyPass != null) {
@@ -39,8 +29,6 @@ public class SpotifyClient {
                         .build();
             });
         }
-
-        // Detect and apply system proxy
         try {
             URI uri = new URI("https://api.spotify.com");
             List<java.net.Proxy> proxies = java.net.ProxySelector.getDefault().select(uri);
@@ -56,10 +44,6 @@ public class SpotifyClient {
         return builder.build();
     }
 
-    /**
-     * Checks if internet connection is available.
-     * Uses multiple reliable endpoints to ensure a robust check.
-     */
     public static boolean isInternetAvailable() {
         String[] reliableEndpoints = {
                 "https://www.google.com",
@@ -67,14 +51,12 @@ public class SpotifyClient {
                 "https://1.1.1.1",
                 "https://api.spotify.com"
         };
-
         for (String endpoint : reliableEndpoints) {
             try {
                 Request request = new Request.Builder()
                         .url(endpoint)
                         .head()
                         .build();
-
                 try (Response response = client.newCall(request).execute()) {
                     boolean isSuccessful = response.isSuccessful() || response.code() == 401;
                     if (isSuccessful) {
@@ -86,30 +68,23 @@ public class SpotifyClient {
                 System.out.println("Failed to connect to " + endpoint + ": " + e.getMessage());
             }
         }
-
         System.out.println("Internet check failed: Could not connect to any reliable endpoint");
         return false;
     }
 
-    /**
-     * Gets token response as a JsonObject.
-     */
     public static com.google.gson.JsonObject getTokenResponse(String authCode) throws IOException {
         String credentials = CLIENT_ID + ":" + CLIENT_SECRET;
         String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
-
         RequestBody body = new FormBody.Builder()
                 .add("grant_type", "authorization_code")
                 .add("code", authCode)
                 .add("redirect_uri", REDIRECT_URI)
                 .build();
-
         Request request = new Request.Builder()
                 .url(AUTH_URL)
                 .header("Authorization", "Basic " + encodedCredentials)
                 .post(body)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Error getting token response: " + response.code() + " - " + response.body().string());
@@ -119,25 +94,19 @@ public class SpotifyClient {
         }
     }
 
-    /**
-     * Gets an access token using authorization code.
-     */
     public static String getAccessToken(String authCode) throws IOException {
         String credentials = CLIENT_ID + ":" + CLIENT_SECRET;
         String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
-
         RequestBody body = new FormBody.Builder()
                 .add("grant_type", "authorization_code")
                 .add("code", authCode)
                 .add("redirect_uri", REDIRECT_URI)
                 .build();
-
         Request request = new Request.Builder()
                 .url(AUTH_URL)
                 .header("Authorization", "Basic " + encodedCredentials)
                 .post(body)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Error getting access token: " + response.code() + " - " + response.body().string());
@@ -151,24 +120,18 @@ public class SpotifyClient {
         }
     }
 
-    /**
-     * Refreshes an access token using a refresh token.
-     */
     public static String refreshAccessToken(String refreshToken) throws IOException {
         String credentials = CLIENT_ID + ":" + CLIENT_SECRET;
         String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
-
         RequestBody body = new FormBody.Builder()
                 .add("grant_type", "refresh_token")
                 .add("refresh_token", refreshToken)
                 .build();
-
         Request request = new Request.Builder()
                 .url(AUTH_URL)
                 .header("Authorization", "Basic " + encodedCredentials)
                 .post(body)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Error refreshing token: " + response.code() + " - " + response.body().string());
@@ -178,8 +141,7 @@ public class SpotifyClient {
                 JsonObject json = JsonParser.parseString(jsonResponse).getAsJsonObject();
                 return json.get("access_token").getAsString();
             } catch (Exception e) {
-                // Handle case where response might be just the token string
-                if (jsonResponse.startsWith("BQ")) { // Spotify tokens typically start with BQ
+                if (jsonResponse.startsWith("BQ")) {
                     return jsonResponse;
                 }
                 throw new IOException("Invalid token response: " + jsonResponse);
@@ -187,38 +149,32 @@ public class SpotifyClient {
         }
     }
 
-
-    /**
-     * Gets the user's profile information.
-     */
-    public static String getUserProfile(String accessToken) throws IOException {
+    public static String getUserProfileJson(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/me")
                 .header("Authorization", "Bearer " + accessToken)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Error getting profile: " + response.code() + " - " + response.body().string());
             }
-            String json = response.body().string();
-            JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
-            // Devuelve solo el display_name, si existe
-            return obj.has("display_name") && !obj.get("display_name").isJsonNull()
-                    ? obj.get("display_name").getAsString()
-                    : null;
+            return response.body().string();
         }
     }
 
-    /**
-     * Gets the user's top tracks.
-     */
+    public static String getUserDisplayName(String accessToken) throws IOException {
+        String json = getUserProfileJson(accessToken);
+        JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
+        return obj.has("display_name") && !obj.get("display_name").isJsonNull()
+                ? obj.get("display_name").getAsString()
+                : obj.get("id").getAsString();
+    }
+
     public static String getTopTracks(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/me/top/tracks?limit=10")
                 .header("Authorization", "Bearer " + accessToken)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Error getting top tracks: " + response.code() + " - " + response.body().string());
@@ -227,15 +183,11 @@ public class SpotifyClient {
         }
     }
 
-    /**
-     * Gets the user's top artists.
-     */
     public static String getTopArtists(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/me/top/artists?limit=10")
                 .header("Authorization", "Bearer " + accessToken)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Error getting top artists: " + response.code() + " - " + response.body().string());
@@ -244,15 +196,11 @@ public class SpotifyClient {
         }
     }
 
-    /**
-     * Gets the user's recently played tracks.
-     */
     public static String getRecentlyPlayedTracks(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/me/player/recently-played?limit=10")
                 .header("Authorization", "Bearer " + accessToken)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Error getting recently played tracks: " + response.code() + " - " + response.body().string());
@@ -261,18 +209,13 @@ public class SpotifyClient {
         }
     }
 
-    /**
-     * Searches for a track by name and returns its ID.
-     */
     public static String searchTrackIdByName(String query, String accessToken) throws IOException {
         String encodedQuery = java.net.URLEncoder.encode(query, StandardCharsets.UTF_8);
         String url = API_BASE_URL + "/search?q=" + encodedQuery + "&type=track&limit=1";
-
         Request request = new Request.Builder()
                 .url(url)
                 .header("Authorization", "Bearer " + accessToken)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Error searching for track: " + response.code() + " - " + response.body().string());
@@ -290,8 +233,7 @@ public class SpotifyClient {
     }
 
     public static String searchAlbumIdByName(String albumName, String accessToken) throws IOException {
-        OkHttpClient client = new OkHttpClient();
-        String url = "https://api.spotify.com/v1/search?q=" + URLEncoder.encode(albumName, StandardCharsets.UTF_8) + "&type=album&limit=1";
+        String url = API_BASE_URL + "/search?q=" + URLEncoder.encode(albumName, StandardCharsets.UTF_8) + "&type=album&limit=1";
         Request request = new Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer " + accessToken)
@@ -310,9 +252,6 @@ public class SpotifyClient {
         }
     }
 
-    /**
-     * Adds a track to the user's library.
-     */
     public static void addTrackToLibrary(String trackId, String accessToken) throws IOException {
         RequestBody body = RequestBody.create("", null);
         Request request = new Request.Builder()
@@ -320,7 +259,6 @@ public class SpotifyClient {
                 .header("Authorization", "Bearer " + accessToken)
                 .put(body)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Error adding track: " + response.code() + " - " + response.body().string());
@@ -329,8 +267,7 @@ public class SpotifyClient {
     }
 
     public static void addAlbumToLibrary(String albumId, String accessToken) throws IOException {
-        OkHttpClient client = new OkHttpClient();
-        String url = "https://api.spotify.com/v1/me/albums?ids=" + albumId;
+        String url = API_BASE_URL + "/me/albums?ids=" + albumId;
         Request request = new Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer " + accessToken)
@@ -343,20 +280,17 @@ public class SpotifyClient {
         }
     }
 
-    /**
-     * Gets information about a specific track.
-     */
     public static JsonObject getTrackInfo(String trackId, String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/tracks/" + trackId)
                 .header("Authorization", "Bearer " + accessToken)
                 .build();
-
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Error getting track info: " + response.code() + " - " + response.body().string());
             }
-            return JsonParser.parseString(response.body().string()).getAsJsonObject();        }
+            return JsonParser.parseString(response.body().string()).getAsJsonObject();
+        }
     }
 
     public static String getAlbumCoverUrl(String trackId, String accessToken) throws IOException {
@@ -366,5 +300,11 @@ public class SpotifyClient {
             return images.get(0).getAsJsonObject().get("url").getAsString();
         }
         return null;
+    }
+
+    public static String getUserIdFromToken(String accessToken) throws IOException {
+        String userProfileJson = getUserProfileJson(accessToken);
+        org.json.JSONObject userProfile = new org.json.JSONObject(userProfileJson);
+        return userProfile.getString("id");
     }
 }

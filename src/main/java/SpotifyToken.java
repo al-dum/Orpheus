@@ -109,4 +109,5 @@ public class SpotifyToken {
     public static void clear() throws SQLException {
         dataStore.deleteAccessToken();
     }
+
 }

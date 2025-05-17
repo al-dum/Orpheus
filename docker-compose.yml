@@ -4,12 +4,13 @@ services:
     image: postgres:15
     restart: always
     environment:
-      POSTGRES_DB: spotify_auth
+      POSTGRES_DB: reviews_db
       POSTGRES_USER: orpheusers
       POSTGRES_PASSWORD: "munyun214"
     ports:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
 volumes:
   pgdata:

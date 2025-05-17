@@ -32,23 +32,30 @@ public class UserManager {
     }
 
     public static int getOrCreateUser(String spotifyId, String username, String avatarUrl) throws SQLException {
-        String sql = """
-            INSERT INTO app_users (spotify_id, username, avatar_url) 
-            VALUES (?, ?, ?)
-            ON CONFLICT (spotify_id) 
-            DO UPDATE SET username = EXCLUDED.username, avatar_url = EXCLUDED.avatar_url 
-            RETURNING id""";
-
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, spotifyId);
-            stmt.setString(2, username);
-            stmt.setString(3, avatarUrl);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return rs.getInt("id");
+        String url = "jdbc:postgresql://localhost:5433/reviews_db";
+        String user = "orpheusers";
+        String password = "munyun214";
+        try (Connection conn = DriverManager.getConnection(url, user, password)) {
+            String selectSql = "SELECT id FROM app_users WHERE spotify_id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(selectSql)) {
+                stmt.setString(1, spotifyId);
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    return rs.getInt("id");
+                }
             }
-            throw new SQLException("No se pudo obtener el ID después de la inserción");
+
+            String insertSql = "INSERT INTO app_users (spotify_id, username, avatar_url) VALUES (?, ?, ?) RETURNING id";
+            try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
+                stmt.setString(1, spotifyId);
+                stmt.setString(2, username);
+                stmt.setString(3, avatarUrl);
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    return rs.getInt("id");
+                }
+            }
+            return -1; // Error
         }
     }
 

@@ -32,16 +32,20 @@ public class ReviewVoteSystem {
      * @param userId ID del usuario que vota
      * @param isUseful true si el voto es "útil", false si es "no útil"
      */
-    public void handleVote(int reviewId, int userId, boolean isUseful) {
+    public void handleVote(int reviewId, Integer spotifyUserId, Integer reviewUserId) {
+        if (spotifyUserId == null && reviewUserId == null) {
+            Platform.runLater(() -> showAlert("Error", "Debes iniciar sesión para votar."));
+            return;
+        }
         new Thread(() -> {
             try {
-                if (ReviewManager.alreadyVoted(reviewId, userId)) {
+                if (ReviewManager.alreadyVoted(reviewId, spotifyUserId, reviewUserId)) {
                     Platform.runLater(() ->
                                               showAlert("Voto duplicado", "Ya has votado esta reseña"));
                     return;
                 }
 
-                ReviewManager.voteReview(reviewId, userId, isUseful);
+                ReviewManager.voteReview(reviewId, spotifyUserId, reviewUserId, true);
 
                 Platform.runLater(() -> {
                     if (updateListener != null) {

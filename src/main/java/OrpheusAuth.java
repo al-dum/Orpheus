@@ -10,7 +10,7 @@ import okhttp3.Request;
 public class OrpheusAuth {
     private static final String DB_URL = "jdbc:postgresql://localhost:5432/spotify_auth";
     private static final String DB_USER = "postgres";
-    private static final String DB_PASSWORD = ""; // Add your password here
+    private static final String DB_PASSWORD = ""; // Update with your PostgreSQL password
 
     public static void main(String[] args) {
         port(8080);
@@ -33,7 +33,11 @@ public class OrpheusAuth {
 
             String clientId = System.getenv("SPOTIFY_CLIENT_ID");
             String redirectUri = "http://localhost:8080/callback";
-            String scope = "user-top-read";
+            String scope = "user-read-private user-read-email user-top-read"; // Added user-read-private, user-read-email
+            if (clientId == null) {
+                return "❌ SPOTIFY_CLIENT_ID no está configurado.";
+            }
+
             String authUrl = "https://accounts.spotify.com/authorize"
                     + "?client_id=" + clientId
                     + "&response_type=code"
@@ -58,6 +62,10 @@ public class OrpheusAuth {
             String clientId = System.getenv("SPOTIFY_CLIENT_ID");
             String clientSecret = System.getenv("SPOTIFY_CLIENT_SECRET");
             String redirectUri = "http://localhost:8080/callback";
+
+            if (clientId == null || clientSecret == null) {
+                return "❌ SPOTIFY_CLIENT_ID o SPOTIFY_CLIENT_SECRET no están configurados.";
+            }
 
             OkHttpClient client = new OkHttpClient();
             RequestBody formBody = new FormBody.Builder()
@@ -105,7 +113,7 @@ public class OrpheusAuth {
                         deleteStmt.executeUpdate();
                     }
 
-                    return "✅ Tokens guardados correctamente en PostgreSQL";
+                    return "✅ Tokens guardados correctamente en PostgreSQL. Puedes cerrar esta ventana.";
                 } catch (SQLException e) {
                     e.printStackTrace();
                     return "❌ Error al guardar tokens: " + e.getMessage();
