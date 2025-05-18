@@ -162,7 +162,6 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         } else {
             tabPane.getTabs().addAll(
                     createMusicTab(),
-                    createSocialTab(),
                     createReviewsTab()
             );
         }
@@ -527,7 +526,7 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         );
 
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
-            if (newTab == tabPane.getTabs().get(2)) {
+            if (newTab == tabPane.getTabs().get(1)) {
                 buttonBox.getChildren().remove(loginButton);
                 if (currentUserId == -1) {
                     buttonBox.getChildren().add(loginButton);
@@ -617,9 +616,12 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
             {
                 btn.setOnAction(e -> {
                     ReviewManager.Review review = getTableView().getItems().get(getIndex());
-                    voteSystem.handleVote(review.id, currentUserId == -1 ? null : currentUserId, currentReviewUser != null ? currentReviewUser.id : null);
+                    // Usar solamente el ID del usuario de reseñas
+                    Integer reviewUserId = currentReviewUser != null ? currentReviewUser.id : null;
+                    voteSystem.handleVote(review.id, null, currentReviewUser != null ? currentReviewUser.id : null, true);
                 });
-                btn.setDisable(currentReviewUser == null && currentUserId == -1);
+                // Deshabilitar el botón solo si no hay usuario de reseñas
+                btn.setDisable(currentReviewUser == null);
             }
             @Override
             protected void updateItem(Void item, boolean empty) {
@@ -634,9 +636,11 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
             {
                 btn.setOnAction(e -> {
                     ReviewManager.Review review = getTableView().getItems().get(getIndex());
-                    voteSystem.handleVote(review.id, currentUserId == -1 ? null : currentUserId, currentReviewUser != null ? currentReviewUser.id : null);
-                });
-                btn.setDisable(currentReviewUser == null && currentUserId == -1);
+                    // Usar solamente el ID del usuario de reseñas
+                    Integer reviewUserId = currentReviewUser != null ? currentReviewUser.id : null;
+                    voteSystem.handleVote(review.id, null, currentReviewUser != null ? currentReviewUser.id : null, false);                });
+                // Deshabilitar el botón solo si no hay usuario de reseñas
+                btn.setDisable(currentReviewUser == null);
             }
             @Override
             protected void updateItem(Void item, boolean empty) {

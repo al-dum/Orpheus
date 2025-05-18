@@ -26,43 +26,52 @@ public class ReviewVoteSystem {
         this.updateListener = updateListener;
     }
 
-    /**
-     * Procesa un voto para una reseña
-     * @param reviewId ID de la reseña
-     * @param userId ID del usuario que vota
-     * @param isUseful true si el voto es "útil", false si es "no útil"
-     */
-    public void handleVote(int reviewId, Integer spotifyUserId, Integer reviewUserId) {
-        if (spotifyUserId == null && reviewUserId == null) {
-            Platform.runLater(() -> showAlert("Error", "Debes iniciar sesión para votar."));
-            return;
-        }
-        new Thread(() -> {
-            try {
-                if (ReviewManager.alreadyVoted(reviewId, spotifyUserId, reviewUserId)) {
-                    Platform.runLater(() ->
-                                              showAlert("Voto duplicado", "Ya has votado esta reseña"));
-                    return;
-                }
+   /**
+    * Procesa un voto para una reseña, utilizando solo el ID del usuario de reseñas
+    * @param reviewId ID de la reseña
+    * @param spotifyUserId Ignorado, se mantiene por compatibilidad
+    * @param reviewUserId ID del usuario de reseñas que está votando
+    * @param isUseful true si el voto es "útil", false si es "no útil"
+    */
+   public void handleVote(int reviewId, Integer spotifyUserId, Integer reviewUserId, boolean isUseful) {
+       // Solo procesar si hay un usuario de reseñas válido
+       if (reviewUserId == null) {
+           if (updateListener != null) {
+               updateListener.onVoteFailure("Debes iniciar sesión como usuario de reseñas para votar");
+           }
+           Platform.runLater(() -> showAlert("Error", "Debes iniciar sesión como usuario de reseñas para votar"));
+           return;
+       }
 
-                ReviewManager.voteReview(reviewId, spotifyUserId, reviewUserId, true);
+       new Thread(() -> {
+           try {
+               if (ReviewManager.alreadyVoted(reviewId, null, reviewUserId)) {
+                   Platform.runLater(() ->
+                           showAlert("Voto duplicado", "Ya has votado esta reseña"));
+                   if (updateListener != null) {
+                       updateListener.onVoteFailure("Ya has votado esta reseña");
+                   }
+                   return;
+               }
 
-                Platform.runLater(() -> {
-                    if (updateListener != null) {
-                        updateListener.onVoteSuccess();
-                    }
-                });
+               ReviewManager.voteReview(reviewId, null, reviewUserId, isUseful);
 
-            } catch (SQLException e) {
-                Platform.runLater(() -> {
-                    if (updateListener != null) {
-                        updateListener.onVoteFailure(e.getMessage());
-                    }
-                    showAlert("Error", "No se pudo registrar el voto: " + e.getMessage());
-                });
-            }
-        }).start();
-    }
+               Platform.runLater(() -> {
+                   if (updateListener != null) {
+                       updateListener.onVoteSuccess();
+                   }
+               });
+
+           } catch (SQLException e) {
+               Platform.runLater(() -> {
+                   if (updateListener != null) {
+                       updateListener.onVoteFailure(e.getMessage());
+                   }
+                   showAlert("Error", "No se pudo registrar el voto: " + e.getMessage());
+               });
+           }
+       }).start();
+   }
 
     /**
      * Muestra una alerta al usuario
