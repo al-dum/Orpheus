@@ -48,19 +48,6 @@ public class ReviewManager {
         String user = "orpheusers";
         String password = "munyun214";
         try (Connection conn = DriverManager.getConnection(url, user, password)) {
-            // Opcional: Eliminar tablas existentes (solo para depuración, elimina datos)
-            // Comentar o eliminar esta sección para mantener los datos existentes
-        /*
-        String dropTables = """
-        DROP TABLE IF EXISTS review_votes CASCADE;
-        DROP TABLE IF EXISTS song_reviews CASCADE;
-        DROP TABLE IF EXISTS review_users CASCADE;
-        DROP TABLE IF EXISTS app_users CASCADE;
-        """;
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(dropTables);
-        }
-        */
 
 
             String sql = """
@@ -74,6 +61,12 @@ public class ReviewManager {
     CREATE TABLE IF NOT EXISTS review_users (
         id SERIAL PRIMARY KEY,
         spotify_id VARCHAR(255) UNIQUE,
+        username VARCHAR(255) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS premium_users (
+        id SERIAL PRIMARY KEY,
         username VARCHAR(255) UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -125,7 +118,6 @@ public class ReviewManager {
                 stmt.execute(sql);
             }
 
-            // Check if review_user_id column exists in song_reviews and add it if not
             String checkSongReviewsColumnSql = """
                 SELECT column_name 
                 FROM information_schema.columns 
@@ -146,7 +138,6 @@ public class ReviewManager {
                 }
             }
 
-            // Migrate review_votes: Remove NOT NULL from user_id and update PRIMARY KEY
             String checkVotesUserIdNotNullSql = """
                 SELECT is_nullable 
                 FROM information_schema.columns 
@@ -161,7 +152,6 @@ public class ReviewManager {
             }
 
             if (userIdNotNull) {
-                // Drop existing primary key
                 String dropPrimaryKeySql = """
                     ALTER TABLE review_votes 
                     DROP CONSTRAINT review_votes_pkey
@@ -170,7 +160,6 @@ public class ReviewManager {
                     stmt.execute(dropPrimaryKeySql);
                 }
 
-                // Remove NOT NULL constraint
                 String removeNotNullSql = """
                     ALTER TABLE review_votes 
                     ALTER COLUMN user_id DROP NOT NULL
@@ -178,8 +167,6 @@ public class ReviewManager {
                 try (Statement stmt = conn.createStatement()) {
                     stmt.execute(removeNotNullSql);
                 }
-
-                // Add review_user_id if not exists
                 String checkVotesReviewUserIdSql = """
                     SELECT column_name 
                     FROM information_schema.columns 
@@ -199,8 +186,6 @@ public class ReviewManager {
                         }
                     }
                 }
-
-                // Add new primary key
                 String addPrimaryKeySql = """
                     ALTER TABLE review_votes 
                     ADD CONSTRAINT review_votes_pkey 
@@ -453,14 +438,5 @@ public class ReviewManager {
             }
         }
         return reviews;
-    }
-
-    public static boolean probarConexion() {
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
-            return true;
-        } catch (SQLException e) {
-            System.err.println("Error de conexión: " + e.getMessage());
-            return false;
-        }
     }
 }
