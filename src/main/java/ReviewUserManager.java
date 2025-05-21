@@ -147,25 +147,42 @@ public class ReviewUserManager {
     }
 
     public static ReviewUser registerPremiumUser(String username, String password) throws SQLException {
-        String sql = "INSERT INTO premium_users (username, password_hash) VALUES (?, ?) RETURNING id";
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, username);
-            stmt.setString(2, PasswordUtil.hashPassword(password));
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                int id = rs.getInt("id");
+        // Primero, insertar en premium_users
+        String sqlPremium = "INSERT INTO premium_users (username, password_hash) VALUES (?, ?) RETURNING id";
+        // Luego, insertar en review_users con is_premium=true
+        String sqlReview = "INSERT INTO review_users (username, password_hash, is_premium) VALUES (?, ?, true) RETURNING id";
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+            conn.setAutoCommit(false);
+            try {
+                // premium_users
+                try (PreparedStatement stmt = conn.prepareStatement(sqlPremium)) {
+                    stmt.setString(1, username);
+                    stmt.setString(2, PasswordUtil.hashPassword(password));
+                    stmt.executeQuery();
+                }
+                // review_users
+                int id;
+                try (PreparedStatement stmt = conn.prepareStatement(sqlReview)) {
+                    stmt.setString(1, username);
+                    stmt.setString(2, PasswordUtil.hashPassword(password));
+                    ResultSet rs = stmt.executeQuery();
+                    if (rs.next()) {
+                        id = rs.getInt("id");
+                    } else {
+                        throw new SQLException("No se pudo registrar el usuario premium en review_users.");
+                    }
+                }
+                conn.commit();
                 return new ReviewUser(id, username);
+            } catch (SQLException e) {
+                conn.rollback();
+                if (e.getSQLState().equals("23505")) { // Unique violation
+                    throw new SQLException("El nombre de usuario ya está en uso.");
+                }
+                throw e;
             }
-            return null;
-        } catch (SQLException e) {
-            if (e.getSQLState().equals("23505")) { // Unique violation
-                throw new SQLException("El nombre de usuario ya está en uso.");
-            }
-            throw e;
         }
     }
-
 
     public static void deletePremiumUser(String username, String password) throws SQLException {
         String sqlSelect = "SELECT password_hash FROM review_users WHERE username = ?";
@@ -192,3 +209,4 @@ public class ReviewUserManager {
 
 
 }
+

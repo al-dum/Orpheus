@@ -61,171 +61,163 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         launch(args);
     }
 
+    @Override
+    public void start(Stage primaryStage) {
+        resultArea = new TextArea();
+        resultArea.setEditable(false);
+        resultArea.setWrapText(true);
+        this.primaryStage = primaryStage;
+        this.voteSystem = new ReviewVoteSystem(this);
+        primaryStage.setTitle("Orpheus - Spotify Social");
 
- @Override
- public void start(Stage primaryStage) {
-     resultArea = new TextArea();
-     resultArea.setEditable(false);
-     resultArea.setWrapText(true);
-     this.primaryStage = primaryStage;
-     this.voteSystem = new ReviewVoteSystem(this);
-     primaryStage.setTitle("Orpheus - Spotify Social");
+        boolean loginExitoso = false;
+        String userType = null;
+        while (!loginExitoso) {
+            ChoiceDialog<String> userTypeDialog = new ChoiceDialog<>("Usuario", "Usuario", "Admin", "Premium");
+            userTypeDialog.setTitle("Seleccionar Tipo de Usuario");
+            userTypeDialog.setHeaderText("¿Qué tipo de usuario eres?");
+            userTypeDialog.setContentText("Selecciona:");
+            Optional<String> userTypeResult = userTypeDialog.showAndWait();
 
-     ChoiceDialog<String> userTypeDialog = new ChoiceDialog<>("Usuario", "Usuario", "Admin", "Premium");
-     userTypeDialog.setTitle("Seleccionar Tipo de Usuario");
-     userTypeDialog.setHeaderText("¿Qué tipo de usuario eres?");
-     userTypeDialog.setContentText("Selecciona:");
-     Optional<String> userTypeResult = userTypeDialog.showAndWait();
+            if (!userTypeResult.isPresent()) {
+                showAlert("Error", "Usuario no seleccionado, cerrando aplicación.");
+                Platform.exit();
+                return;
+            }
+            userType = userTypeResult.get();
+            if (userType.equals("Admin")) {
+                handleAdminLogin();
+                loginExitoso = isAdminMode;
+            } else {
+                loginExitoso = handleUserLogin(userType);
+            }
+        }
 
-     if (!userTypeResult.isPresent()) {
-         showAlert("Error", "Usuario no seleccionado, cerrando aplicación.");
-         Platform.exit();
-         return;
-     }
+        HBox userPanel = createUserPanel();
+        resultContainer = new StackPane();
+        resultContainer.getChildren().add(resultArea);
+        ScrollPane resultScroll = new ScrollPane(resultContainer);
+        resultScroll.setFitToWidth(true);
+        resultScroll.setPrefHeight(100);
 
-     if (userTypeResult.get().equals("Admin")) {
-         handleAdminLogin();
-     } else {
-         handleUserLogin(userTypeResult.get());
-     }
+        tabPane = new TabPane();
+        if (isAdminMode) {
+            tabPane.getTabs().add(createAdminTab());
+        } else {
+            if (userType.equals("Usuario")) {
+                tabPane.getTabs().addAll(createReviewsTab());
+            } else if (userType.equals("Premium")) {
+                tabPane.getTabs().addAll(createReviewsTab(), createMusicTab(), createPremiumTab());
+            }
+        }
 
-     HBox userPanel = createUserPanel();
-     resultContainer = new StackPane();
-     resultContainer.getChildren().add(resultArea);
-     ScrollPane resultScroll = new ScrollPane(resultContainer);
-     resultScroll.setFitToWidth(true);
-     resultScroll.setPrefHeight(100);
+        BorderPane mainLayout = new BorderPane();
+        mainLayout.setTop(userPanel);
+        mainLayout.setCenter(tabPane);
+        mainLayout.setBottom(resultScroll);
 
-     tabPane = new TabPane();
-     if (isAdminMode) {
-         tabPane.getTabs().add(createAdminTab());
-     } else {
-         if (userTypeResult.get().equals("Usuario")) {
-             tabPane.getTabs().addAll(createReviewsTab());
-         } else if (userTypeResult.get().equals("Premium")) {
-             tabPane.getTabs().addAll(createReviewsTab(), createMusicTab(), createPremiumTab());
-         }
-     }
+        primaryStage.setScene(new Scene(mainLayout, 1000, 800));
+        primaryStage.show();
 
-     BorderPane mainLayout = new BorderPane();
-     mainLayout.setTop(userPanel);
-     mainLayout.setCenter(tabPane);
-     mainLayout.setBottom(resultScroll);
-
-     primaryStage.setScene(new Scene(mainLayout, 1000, 800));
-     primaryStage.show();
-
-     if (!isAdminMode) {
-         configureSpotifyCallback();
-     }
- }
-
-private void handleUserLogin(String userType) {
-    Dialog<ButtonType> loginDialog = new Dialog<>();
-    loginDialog.setTitle("Inicio de Sesión");
-    loginDialog.setHeaderText("Inicia sesión o regístrate como " + userType.toLowerCase() + " usuario");
-
-    GridPane grid = new GridPane();
-    grid.setHgap(10);
-    grid.setVgap(10);
-    TextField usernameField = new TextField();
-    PasswordField passwordField = new PasswordField();
-    grid.add(new Label("Usuario:"), 0, 0);
-    grid.add(usernameField, 1, 0);
-    grid.add(new Label("Contraseña:"), 0, 1);
-    grid.add(passwordField, 1, 1);
-
-    loginDialog.getDialogPane().setContent(grid);
-    loginDialog.getDialogPane().getButtonTypes().addAll(
-            new ButtonType("Iniciar Sesión", ButtonBar.ButtonData.OK_DONE),
-            new ButtonType("Registrarse", ButtonBar.ButtonData.OTHER),
-            ButtonType.CANCEL
-    );
-
-    Optional<ButtonType> loginResult = loginDialog.showAndWait();
-    if (!loginResult.isPresent() || loginResult.get() == ButtonType.CANCEL) {
-        Platform.exit();
-        return;
+        if (!isAdminMode) {
+            configureSpotifyCallback();
+        }
     }
 
-    String username = usernameField.getText().trim();
-    String password = passwordField.getText();
-    if (username.isEmpty() || password.isEmpty()) {
-        showAlert("Error", "Debes ingresar un nombre de usuario y contraseña.");
-        Platform.exit();
-        return;
-    }
+    private boolean handleUserLogin(String userType) {
+        Dialog<ButtonType> loginDialog = new Dialog<>();
+        loginDialog.setTitle("Inicio de Sesión");
+        loginDialog.setHeaderText("Inicia sesión o regístrate como " + userType.toLowerCase() + " usuario");
 
-    try {
-        if (userType.equals("Premium")) {
-            if (loginResult.get().getText().equals("Iniciar Sesión")) {
-                try {
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        TextField usernameField = new TextField();
+        PasswordField passwordField = new PasswordField();
+        grid.add(new Label("Usuario:"), 0, 0);
+        grid.add(usernameField, 1, 0);
+        grid.add(new Label("Contraseña:"), 0, 1);
+        grid.add(passwordField, 1, 1);
+
+        loginDialog.getDialogPane().setContent(grid);
+        loginDialog.getDialogPane().getButtonTypes().addAll(
+                new ButtonType("Iniciar Sesión", ButtonBar.ButtonData.OK_DONE),
+                new ButtonType("Registrarse", ButtonBar.ButtonData.OTHER),
+                ButtonType.CANCEL
+        );
+
+        Optional<ButtonType> loginResult = loginDialog.showAndWait();
+        if (!loginResult.isPresent() || loginResult.get() == ButtonType.CANCEL) {
+            return false;
+        }
+
+        String username = usernameField.getText().trim();
+        String password = passwordField.getText();
+        if (username.isEmpty() || password.isEmpty()) {
+            showAlert("Error", "Debes ingresar un nombre de usuario y contraseña.");
+            return false;
+        }
+
+        try {
+            if (userType.equals("Premium")) {
+                if (loginResult.get().getText().equals("Iniciar Sesión")) {
                     currentReviewUser = ReviewUserManager.loginPremiumUser(username, password);
-                } catch (IllegalArgumentException e) {
-                    showAlert("Error", e.getMessage());
-                    showUserTypeDialog(); // Mostrar el menú después de cerrar la alerta
-                    return;
+                } else {
+                    currentReviewUser = ReviewUserManager.registerPremiumUser(username, password);
                 }
             } else {
-                currentReviewUser = ReviewUserManager.registerPremiumUser(username, password);
+                if (loginResult.get().getText().equals("Iniciar Sesión")) {
+                    currentReviewUser = ReviewUserManager.loginUser(username, password);
+                } else {
+                    currentReviewUser = ReviewUserManager.registerUser(username, password);
+                }
             }
-        } else {
-            if (loginResult.get().getText().equals("Iniciar Sesión")) {
-                currentReviewUser = ReviewUserManager.loginUser(username, password);
-            } else {
-                currentReviewUser = ReviewUserManager.registerUser(username, password);
-            }
+            resultArea.setText("Bienvenido, " + currentReviewUser.username + "!");
+            return true;
+        } catch (IllegalArgumentException | SQLException e) {
+            showAlert("Error", e.getMessage());
+            return false;
         }
-        resultArea.setText("Bienvenido, " + currentReviewUser.username + "!");
-    } catch (IllegalArgumentException e) {
-        showAlert("Error", e.getMessage());
-        volverASeleccionUsuario(); // Regresa a la selección de tipo de usuario
-    }catch (SQLException e) {
-        if (userType.equals("Premium")) {
+    }
+
+    private void mostrarErrorYReintentar(String mensaje) {
+        Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.ERROR);
             alert.setTitle("Error");
             alert.setHeaderText(null);
-            alert.setContentText("El usuario no es premium. Selecciona otro tipo de usuario.");
-            alert.showAndWait(); // Espera a que el usuario cierre la alerta
-            showUserTypeDialog(); // Mostrar el menú después de cerrar la alerta
+            alert.setContentText(mensaje);
+            alert.showAndWait();
+        });
+    }
+
+    private void showUserTypeDialog() {
+        showUserTypeDialog(true);
+    }
+
+    private void showUserTypeDialog(boolean allowExit) {
+        ChoiceDialog<String> userTypeDialog = new ChoiceDialog<>("Usuario", "Usuario", "Admin", "Premium");
+        userTypeDialog.setTitle("Seleccionar Tipo de Usuario");
+        userTypeDialog.setHeaderText("¿Qué tipo de usuario eres?");
+        userTypeDialog.setContentText("Selecciona:");
+        Optional<String> userTypeResult = userTypeDialog.showAndWait();
+
+        if (!userTypeResult.isPresent()) {
+            showAlert("Error", "Usuario no seleccionado, cerrando aplicación.");
+            if (allowExit) Platform.exit();
             return;
+        }
+
+        if (userTypeResult.get().equals("Admin")) {
+            handleAdminLogin();
         } else {
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle("Error");
-            alert.setHeaderText(null);
-            alert.setContentText("Error al iniciar sesión: " + e.getMessage());
-            alert.showAndWait(); // Espera a que el usuario cierre la alerta
-            volverASeleccionUsuario(); // Regresa a la selección de usuario después de cerrar la alerta
+            handleUserLogin(userTypeResult.get());
         }
     }
-}
-
-private void showUserTypeDialog() {
-    ChoiceDialog<String> userTypeDialog = new ChoiceDialog<>("Usuario", "Usuario", "Admin", "Premium");
-    userTypeDialog.setTitle("Seleccionar Tipo de Usuario");
-    userTypeDialog.setHeaderText("¿Qué tipo de usuario eres?");
-    userTypeDialog.setContentText("Selecciona:");
-    Optional<String> userTypeResult = userTypeDialog.showAndWait();
-
-    if (!userTypeResult.isPresent()) {
-        showAlert("Error", "Usuario no seleccionado, cerrando aplicación.");
-        Platform.exit();
-        return;
-    }
-
-    if (userTypeResult.get().equals("Admin")) {
-        handleAdminLogin();
-    } else {
-        handleUserLogin(userTypeResult.get());
-    }
-}
 
     private HBox createUserPanel() {
         ImageView avatarView = new ImageView(new Image(DEFAULT_AVATAR, 50, 50, true, true));
         Label usernameLabel = new Label("No autenticado");
         Button logoutButton = new Button("Cerrar sesión");
-
-
 
         Button exitButton = new Button("Salir");
         exitButton.setOnAction(e -> Platform.exit());
@@ -234,8 +226,6 @@ private void showUserTypeDialog() {
         Button volverButton = new Button("Volver a selección de usuario");
         volverButton.setOnAction(e -> volverASeleccionUsuario());
         volverButton.setStyle("-fx-background-color: #4286f4; -fx-text-fill: white;");
-
-
 
         logoutButton.setOnAction(e -> {
             try {
@@ -247,11 +237,19 @@ private void showUserTypeDialog() {
                 avatarView.setImage(new Image(DEFAULT_AVATAR));
                 usernameLabel.setText("No autenticado");
                 resultArea.setText("Sesión cerrada correctamente");
-                HBox buttonBox = (HBox) ((VBox) tabPane.getTabs().get(2).getContent()).getChildren().get(0);
-                if (!buttonBox.getChildren().stream().anyMatch(node -> node instanceof Button && ((Button) node).getText().equals("Iniciar sesión en Spotify"))) {
-                    Button loginButton = new Button("Iniciar sesión en Spotify");
-                    loginButton.setOnAction(event -> triggerSpotifyLogin());
-                    buttonBox.getChildren().add(loginButton);
+                if (tabPane != null && tabPane.getTabs().size() > 2) {
+                    Tab tab = tabPane.getTabs().get(2);
+                    if (tab.getContent() instanceof VBox) {
+                        VBox vbox = (VBox) tab.getContent();
+                        if (!vbox.getChildren().isEmpty() && vbox.getChildren().get(0) instanceof HBox) {
+                            HBox buttonBox = (HBox) vbox.getChildren().get(0);
+                            if (!buttonBox.getChildren().stream().anyMatch(node -> node instanceof Button && ((Button) node).getText().equals("Iniciar sesión en Spotify"))) {
+                                Button loginButton = new Button("Iniciar sesión en Spotify");
+                                loginButton.setOnAction(event -> triggerSpotifyLogin());
+                                buttonBox.getChildren().add(loginButton);
+                            }
+                        }
+                    }
                 }
             } catch (SQLException ex) {
                 resultArea.setText("Error al cerrar sesión: " + ex.getMessage());
@@ -582,7 +580,7 @@ private void showUserTypeDialog() {
         );
 
         tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
-            if (newTab == tabPane.getTabs().get(1)) {
+            if (tabPane.getTabs().size() > 1 && newTab == tabPane.getTabs().get(1)) {
                 buttonBox.getChildren().remove(loginButton);
                 if (currentUserId == -1) {
                     buttonBox.getChildren().add(loginButton);
@@ -664,7 +662,6 @@ private void showUserTypeDialog() {
         reviewsTable.setItems(reviewsData);
         reviewsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
-
         TableColumn<ReviewManager.Review, Void> voteUsefulCol = new TableColumn<>("Útil");
         voteUsefulCol.setCellFactory(col -> new TableCell<>() {
             private final Button btn = new Button("👍");
@@ -675,7 +672,6 @@ private void showUserTypeDialog() {
                     Integer reviewUserId = currentReviewUser != null ? currentReviewUser.id : null;
                     voteSystem.handleVote(review.id, null, currentReviewUser != null ? currentReviewUser.id : null, true);
                 });
-                // Deshabilitar el botón solo si no hay usuario de reseñas
                 btn.setDisable(currentReviewUser == null);
             }
             @Override
@@ -693,8 +689,8 @@ private void showUserTypeDialog() {
                     ReviewManager.Review review = getTableView().getItems().get(getIndex());
 
                     Integer reviewUserId = currentReviewUser != null ? currentReviewUser.id : null;
-                    voteSystem.handleVote(review.id, null, currentReviewUser != null ? currentReviewUser.id : null, false);                });
-
+                    voteSystem.handleVote(review.id, null, currentReviewUser != null ? currentReviewUser.id : null, false);
+                });
                 btn.setDisable(currentReviewUser == null);
             }
             @Override
@@ -705,7 +701,6 @@ private void showUserTypeDialog() {
         });
 
         reviewsTable.getColumns().addAll(voteUsefulCol, voteNotUsefulCol);
-
 
         reviewsTable.setPrefHeight(400);
         reviewsTable.setMinHeight(200);
@@ -913,7 +908,6 @@ private void showUserTypeDialog() {
             return;
         }
 
-
         TextInputDialog usernameDialog = new TextInputDialog(currentReviewUser != null ? currentReviewUser.username : "");
         usernameDialog.setTitle("Nombre de usuario");
         usernameDialog.setHeaderText("Ingresa el nombre de usuario para la reseña");
@@ -934,7 +928,6 @@ private void showUserTypeDialog() {
                 showAlert("Error", "El nombre de usuario no existe.");
                 return;
             }
-
 
             if (currentReviewUser != null && reviewUser.id == currentReviewUser.id) {
 
@@ -1307,11 +1300,10 @@ private void showUserTypeDialog() {
             }
         }
     }
+
     public void volverASeleccionUsuario() {
-        // Cerrar la ventana actual
         primaryStage.close();
 
-        // Iniciar una nueva instancia de la aplicación
         Platform.runLater(() -> {
             try {
                 new OrpheusTUI().start(new Stage());
