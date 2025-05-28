@@ -302,9 +302,9 @@ public class SpotifyClient {
         return null;
     }
 
-    public static String getUserIdFromToken(String accessToken) throws IOException {
-        String userProfileJson = getUserProfileJson(accessToken);
-        org.json.JSONObject userProfile = new org.json.JSONObject(userProfileJson);
-        return userProfile.getString("id");
-    }
+//    public static String getUserIdFromToken(String accessToken) throws IOException {
+//        String userProfileJson = getUserProfileJson(accessToken);
+//        org.json.JSONObject userProfile = new org.json.JSONObject(userProfileJson);
+//        return userProfile.getString("id");
+//    }
 }

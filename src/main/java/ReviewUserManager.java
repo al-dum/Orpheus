@@ -21,12 +21,12 @@ public class ReviewUserManager {
         }
     }
 
-    public static void showAlert(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setContentText(message);
-        alert.showAndWait();
-    }
+//    public static void showAlert(String title, String message) {
+//        Alert alert = new Alert(Alert.AlertType.ERROR);
+//        alert.setTitle(title);
+//        alert.setContentText(message);
+//        alert.showAndWait();
+//    }
 
     public static ReviewUser registerUser(String username, String password) throws SQLException {
         String sql = "INSERT INTO review_users (username, password_hash) VALUES (?, ?) RETURNING id";
@@ -135,13 +135,22 @@ public class ReviewUserManager {
     }
 
     public static void deleteUser(String username) throws SQLException {
-        String sql = "DELETE FROM review_users WHERE username = ?";
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, username);
-            int rows = stmt.executeUpdate();
-            if (rows == 0) {
-                throw new SQLException("El usuario " + username + " no existe.");
+        // Eliminar de premium_users primero (si existe)
+        String sqlDeletePremium = "DELETE FROM premium_users WHERE username = ?";
+        String sqlDeleteReview = "DELETE FROM review_users WHERE username = ?";
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+            // Eliminar de premium_users
+            try (PreparedStatement stmtPremium = conn.prepareStatement(sqlDeletePremium)) {
+                stmtPremium.setString(1, username);
+                stmtPremium.executeUpdate();
+            }
+            // Eliminar de review_users
+            try (PreparedStatement stmtReview = conn.prepareStatement(sqlDeleteReview)) {
+                stmtReview.setString(1, username);
+                int rows = stmtReview.executeUpdate();
+                if (rows == 0) {
+                    throw new SQLException("El usuario " + username + " no existe.");
+                }
             }
         }
     }
@@ -206,7 +215,5 @@ public class ReviewUserManager {
             }
         }
     }
-
-
 }
 

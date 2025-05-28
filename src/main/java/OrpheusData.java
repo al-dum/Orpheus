@@ -3,7 +3,7 @@ import java.sql.*;
 public class OrpheusData {
     private static final String DB_URL = "jdbc:postgresql://localhost:5432/spotify_auth";
     private static final String DB_USER = "postgres";
-    private static final String DB_PASSWORD = ""; // Add your password here
+    private static final String DB_PASSWORD = "";
 
     public Connection connect() throws SQLException {
         return DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);

@@ -36,16 +36,12 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
     private int currentUserId = -1;
     private String currentUsername = "";
     private String currentAvatarUrl = DEFAULT_AVATAR;
-    private static final String SPOTIFY_AUTH_DB_URL = "jdbc:postgresql://localhost:5432/spotify_auth";
-    private static final String SPOTIFY_AUTH_DB_USER = "postgres";
-    private static final String SPOTIFY_AUTH_DB_PASSWORD = "1234";
     private String currentAccessToken = "";
     private String currentRefreshToken = "";
     private TableView<ReviewManager.Review> reviewsTable = new TableView<>();
     private TableView<UserManager.UserProfile> usersTable = new TableView<>();
     private ObservableList<ReviewManager.Review> reviewsData = FXCollections.observableArrayList();
     private ObservableList<UserManager.UserProfile> usersData = FXCollections.observableArrayList();
-    private static OrpheusData orpheusData = new OrpheusData();
     private ReviewUserManager.ReviewUser currentReviewUser = null;
     private boolean isAdminMode = false;
     private static final String ADMIN_PASSWORD = "admin123";
@@ -73,7 +69,7 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         boolean loginExitoso = false;
         String userType = null;
         while (!loginExitoso) {
-            ChoiceDialog<String> userTypeDialog = new ChoiceDialog<>("Usuario", "Usuario", "Admin", "Premium");
+            ChoiceDialog<String> userTypeDialog = new ChoiceDialog<>("Usuario", "Usuario", "Premium", "Admin");
             userTypeDialog.setTitle("Seleccionar Tipo de Usuario");
             userTypeDialog.setHeaderText("¿Qué tipo de usuario eres?");
             userTypeDialog.setContentText("Selecciona:");
@@ -107,7 +103,7 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
             if (userType.equals("Usuario")) {
                 tabPane.getTabs().addAll(createReviewsTab());
             } else if (userType.equals("Premium")) {
-                tabPane.getTabs().addAll(createReviewsTab(), createMusicTab(), createPremiumTab());
+                tabPane.getTabs().addAll(createReviewsTab(), createMusicTab());
             }
         }
 
@@ -177,40 +173,6 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         } catch (IllegalArgumentException | SQLException e) {
             showAlert("Error", e.getMessage());
             return false;
-        }
-    }
-
-    private void mostrarErrorYReintentar(String mensaje) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle("Error");
-            alert.setHeaderText(null);
-            alert.setContentText(mensaje);
-            alert.showAndWait();
-        });
-    }
-
-    private void showUserTypeDialog() {
-        showUserTypeDialog(true);
-    }
-
-    private void showUserTypeDialog(boolean allowExit) {
-        ChoiceDialog<String> userTypeDialog = new ChoiceDialog<>("Usuario", "Usuario", "Admin", "Premium");
-        userTypeDialog.setTitle("Seleccionar Tipo de Usuario");
-        userTypeDialog.setHeaderText("¿Qué tipo de usuario eres?");
-        userTypeDialog.setContentText("Selecciona:");
-        Optional<String> userTypeResult = userTypeDialog.showAndWait();
-
-        if (!userTypeResult.isPresent()) {
-            showAlert("Error", "Usuario no seleccionado, cerrando aplicación.");
-            if (allowExit) Platform.exit();
-            return;
-        }
-
-        if (userTypeResult.get().equals("Admin")) {
-            handleAdminLogin();
-        } else {
-            handleUserLogin(userTypeResult.get());
         }
     }
 
@@ -471,86 +433,6 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         return tab;
     }
 
-    private Tab createPremiumTab() {
-        VBox premiumTab = new VBox(15);
-        premiumTab.setPadding(new Insets(15));
-
-        Label premiumLabel = new Label("Funciones Premium");
-        premiumLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold;");
-
-        Button deletePremiumButton = new Button("Eliminar cuenta Premium");
-        deletePremiumButton.setOnAction(e -> {
-            if (currentReviewUser == null) {
-                showAlert("Error", "Debes iniciar sesión como usuario premium.");
-                return;
-            }
-            TextInputDialog usernameDialog = new TextInputDialog();
-            usernameDialog.setTitle("Eliminar cuenta Premium");
-            usernameDialog.setHeaderText("Ingresa tu nombre de usuario y contraseña");
-            usernameDialog.setContentText("Usuario:");
-            Optional<String> usernameResult = usernameDialog.showAndWait();
-
-            if (usernameResult.isPresent()) {
-                TextInputDialog passwordDialog = new TextInputDialog();
-                passwordDialog.setTitle("Eliminar cuenta Premium");
-                passwordDialog.setHeaderText("Ingresa tu contraseña");
-                passwordDialog.setContentText("Contraseña:");
-                Optional<String> passwordResult = passwordDialog.showAndWait();
-
-                if (passwordResult.isPresent()) {
-                    try {
-                        ReviewUserManager.deletePremiumUser(usernameResult.get(), passwordResult.get());
-                        showAlert("Éxito", "Tu cuenta ha sido eliminada.");
-                        Platform.exit();
-                    } catch (SQLException ex) {
-                        showAlert("Error", "Error al eliminar cuenta: " + ex.getMessage());
-                    }
-                }
-            }
-        });
-
-        premiumTab.getChildren().addAll(premiumLabel, deletePremiumButton);
-
-        Tab tab = new Tab("Premium", premiumTab);
-        tab.setClosable(false);
-        return tab;
-    }
-
-    private Tab createSocialTab() {
-        VBox socialTab = new VBox(15);
-        socialTab.setPadding(new Insets(15));
-
-        initializeUsersTable();
-
-        Button searchUsersButton = new Button("Buscar usuarios");
-        Button followUserButton = new Button("Seguir usuario seleccionado");
-        Button unfollowUserButton = new Button("Dejar de seguir");
-        Button friendActivityButton = new Button("Ver actividad de amigos");
-
-        searchUsersButton.setOnAction(e -> searchUsersDialog());
-        followUserButton.setOnAction(e -> followSelectedUser());
-        unfollowUserButton.setOnAction(e -> unfollowSelectedUser());
-        friendActivityButton.setOnAction(e -> showFriendActivity());
-
-        VBox userControls = new VBox(10,
-                                     new Label("Usuarios"),
-                                     searchUsersButton,
-                                     new HBox(10, followUserButton, unfollowUserButton),
-                                     friendActivityButton
-        );
-
-        socialTab.getChildren().addAll(
-                userControls,
-                new Separator(),
-                new Label("Lista de Usuarios"),
-                usersTable
-        );
-
-        Tab tab = new Tab("Social", socialTab);
-        tab.setClosable(false);
-        return tab;
-    }
-
     private Tab createReviewsTab() {
         VBox reviewsTab = new VBox(15);
         reviewsTab.setPadding(new Insets(15));
@@ -593,41 +475,6 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         tab.setClosable(false);
         tab.setId("reviewsTab");
         return tab;
-    }
-
-    private void initializeUsersTable() {
-        TableColumn<UserManager.UserProfile, String> avatarCol = new TableColumn<>("Avatar");
-        avatarCol.setCellFactory(col -> new TableCell<>() {
-            private final ImageView imageView = new ImageView();
-            {
-                imageView.setFitHeight(40);
-                imageView.setFitWidth(40);
-            }
-            @Override
-            protected void updateItem(String url, boolean empty) {
-                super.updateItem(url, empty);
-                if (empty || url == null) {
-                    setGraphic(null);
-                } else {
-                    imageView.setImage(new Image(url));
-                    setGraphic(imageView);
-                }
-            }
-        });
-        avatarCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().avatarUrl));
-
-        TableColumn<UserManager.UserProfile, String> usernameCol = new TableColumn<>("Usuario");
-        usernameCol.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().username));
-
-        TableColumn<UserManager.UserProfile, Number> followersCol = new TableColumn<>("Seguidores");
-        followersCol.setCellValueFactory(cd -> new SimpleIntegerProperty(cd.getValue().followersCount));
-
-        TableColumn<UserManager.UserProfile, Number> followingCol = new TableColumn<>("Siguiendo");
-        followingCol.setCellValueFactory(cd -> new SimpleIntegerProperty(cd.getValue().followingCount));
-
-        usersTable.getColumns().setAll(avatarCol, usernameCol, followersCol, followingCol);
-        usersTable.setItems(usersData);
-        usersTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
     }
 
     private void initializeSongReviewsTable() {
@@ -862,17 +709,6 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         return token.getAccessToken();
     }
 
-    private void eliminarUsuario() throws SQLException {
-        String url = "jdbc:postgresql://localhost:5433/spotify_auth";
-        String user = "orpheusers";
-        String password = "munyun214";
-        String sql = "DELETE FROM usuarios";
-        try (Connection conn = DriverManager.getConnection(url, user, password);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.executeUpdate();
-        }
-    }
-
     @Override
     public void onVoteSuccess() {
         refreshSongReviewsTable();
@@ -939,7 +775,7 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
                 passwordDialog.setContentText("Contraseña:");
                 Optional<String> passwordResult = passwordDialog.showAndWait();
 
-                if (!passwordResult.isPresent() || passwordResult.get().isEmpty()) {
+                if (passwordResult.isEmpty() || passwordResult.get().isEmpty()) {
                     showAlert("Error", "Debes ingresar una contraseña.");
                     return;
                 }
@@ -1175,135 +1011,8 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         }).start();
     }
 
-    private void searchUsersDialog() {
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("Buscar usuarios");
-        dialog.setHeaderText("Ingresa el nombre de usuario a buscar");
-        dialog.setContentText("Usuario:");
-
-        Optional<String> result = dialog.showAndWait();
-        result.ifPresent(query -> {
-            new Thread(() -> {
-                try {
-                    List<UserManager.UserProfile> users = UserManager.searchUsers(query);
-                    Platform.runLater(() -> {
-                        usersData.clear();
-                        usersData.addAll(users);
-                        resultArea.setText("Mostrando " + users.size() + " resultados para '" + query + "'");
-                    });
-                } catch (SQLException e) {
-                    Platform.runLater(() -> showAlert("Error", "Error al buscar usuarios: " + e.getMessage()));
-                }
-            }).start();
-        });
-    }
-
-    private void followSelectedUser() {
-        if (currentUserId == -1) {
-            resultArea.setText("Debes iniciar sesión primero");
-            return;
-        }
-
-        UserManager.UserProfile selected = usersTable.getSelectionModel().getSelectedItem();
-        if (selected == null) {
-            resultArea.setText("Selecciona un usuario primero");
-            return;
-        }
-
-        new Thread(() -> {
-            try {
-                UserManager.followUser(currentUserId, selected.id);
-                Platform.runLater(() -> resultArea.setText("Ahora sigues a " + selected.username));
-            } catch (SQLException e) {
-                Platform.runLater(() -> showAlert("Error", "Error al seguir usuario: " + e.getMessage()));
-            }
-        }).start();
-    }
-
-    private void unfollowSelectedUser() {
-        if (currentUserId == -1) {
-            resultArea.setText("Debes iniciar sesión primero");
-            return;
-        }
-
-        UserManager.UserProfile selected = usersTable.getSelectionModel().getSelectedItem();
-        if (selected == null) {
-            resultArea.setText("Selecciona un usuario primero");
-            return;
-        }
-
-        new Thread(() -> {
-            try {
-                UserManager.unfollowUser(currentUserId, selected.id);
-                Platform.runLater(() -> resultArea.setText("Has dejado de seguir a " + selected.username));
-            } catch (SQLException e) {
-                Platform.runLater(() -> showAlert("Error", "Error al dejar de seguir: " + e.getMessage()));
-            }
-        }).start();
-    }
-
-    private void showFriendActivity() {
-        if (currentUserId == -1) {
-            resultArea.setText("Debes iniciar sesión primero");
-            return;
-        }
-
-        new Thread(() -> {
-            try {
-                List<MusicPlayer.PlayHistory> activity = MusicPlayer.getFriendActivity(currentUserId);
-                StringBuilder sb = new StringBuilder("Actividad de amigos:\n\n");
-
-                for (MusicPlayer.PlayHistory item : activity) {
-                    sb.append(item.trackName).append("\n");
-                    sb.append("   Escuchado el: ").append(item.playedAt.toString().substring(0, 16)).append("\n\n");
-                }
-
-                Platform.runLater(() -> resultArea.setText(sb.toString()));
-            } catch (SQLException e) {
-                Platform.runLater(() -> showAlert("Error", "Error al obtener actividad: " + e.getMessage()));
-            }
-        }).start();
-    }
-
-    private String solicitarNombreDeUsuarioUnico() throws SQLException {
-        String url = "jdbc:postgresql://localhost:5433/reviews_db";
-        String user = "orpheusers";
-        String password = "munyun214";
-
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("Nombre de usuario");
-        dialog.setHeaderText("Elige un nombre de usuario único para tu reseña");
-        dialog.setContentText("Nombre de usuario:");
-
-        while (true) {
-            Optional<String> result = dialog.showAndWait();
-            if (result.isPresent() && !result.get().trim().isEmpty()) {
-                String username = result.get().trim();
-                String sql = "SELECT 1 FROM song_reviews WHERE review_username = ?";
-                try (Connection conn = DriverManager.getConnection(url, user, password);
-                     PreparedStatement stmt = conn.prepareStatement(sql)) {
-                    stmt.setString(1, username);
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        if (!rs.next()) {
-                            return username;
-                        } else {
-                            Platform.runLater(() -> showAlert("Error", "Ese nombre de usuario ya está en uso. Elige otro."));
-                        }
-                    }
-                } catch (SQLException e) {
-                    Platform.runLater(() -> showAlert("Error", "Error al verificar nombre de usuario: " + e.getMessage()));
-                    throw e;
-                }
-            } else {
-                Platform.runLater(() -> showAlert("Error", "Debes ingresar un nombre de usuario."));
-                return null;
-            }
-        }
-    }
-
     public void volverASeleccionUsuario() {
         primaryStage.close();
-
         Platform.runLater(() -> {
             try {
                 new OrpheusTUI().start(new Stage());
