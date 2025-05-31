@@ -26,6 +26,24 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * OrpheusTUI es la clase principal de la interfaz gráfica de usuario (GUI) de la aplicación Orpheus.
+ * Utiliza JavaFX para mostrar y gestionar las pestañas de usuario, premium y administrador,
+ * así como las funcionalidades de reseñas, música y administración de usuarios.
+ * Implementa ReviewVoteSystem.VoteUpdateListener para actualizar la interfaz tras acciones de voto.
+ *
+ * Funcionalidades principales:
+ * <ul>
+ *   <li>Inicio de sesión y registro de usuarios normales y premium</li>
+ *   <li>Gestión de reseñas de canciones</li>
+ *   <li>Integración con Spotify para usuarios premium</li>
+ *   <li>Administración de usuarios y exportación de datos para administradores</li>
+ * </ul>
+ *
+ * @author Elismoud
+ * @version 1.0
+ * @since 2024-06-01
+ */
 public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpdateListener {
     private ReviewVoteSystem voteSystem;
     private static final String DEFAULT_AVATAR = "https://i.scdn.co/image/ab6775700000ee8510e0a4a948b6e370d1cbda0f";
@@ -57,6 +75,9 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         launch(args);
     }
 
+    /**
+     * Muestra un cuadro de diálogo de alerta con el mensaje proporcionado.
+     */
     @Override
     public void start(Stage primaryStage) {
         resultArea = new TextArea();
@@ -120,6 +141,9 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         }
     }
 
+    /**
+     * Configura el callback de Spotify para manejar la autenticación y el acceso a la API.
+     */
     private boolean handleUserLogin(String userType) {
         Dialog<ButtonType> loginDialog = new Dialog<>();
         loginDialog.setTitle("Inicio de Sesión");
@@ -176,6 +200,11 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         }
     }
 
+    /**
+     * Crea un panel de usuario que muestra la información del usuario actual y permite cerrar sesión.
+     *
+     * @return Un HBox que contiene la información del usuario y los botones de acción.
+     */
     private HBox createUserPanel() {
         ImageView avatarView = new ImageView(new Image(DEFAULT_AVATAR, 50, 50, true, true));
         Label usernameLabel = new Label("No autenticado");
@@ -225,6 +254,11 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         return userPanel;
     }
 
+    /**
+     * Crea la pestaña de administración para usuarios con permisos de administrador.
+     *
+     * @return Un objeto Tab configurado con las opciones de administración.
+     */
     private Tab createAdminTab() {
         VBox adminTab = new VBox(15);
         adminTab.setPadding(new Insets(15));
@@ -299,6 +333,14 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         return tab;
     }
 
+    /**
+     * Crea una pestaña que contiene opciones y funcionalidades para acciones relacionadas con la música.
+     *
+     * La pestaña incluye botones para iniciar sesión en Spotify, añadir canciones y álbumes a la biblioteca,
+     * ver el perfil del usuario y mostrar las canciones y artistas principales.
+     *
+     * @return Una pestaña configurada para funcionalidades musicales.
+     */
     private Tab createMusicTab() {
         VBox musicTab = new VBox(15);
         musicTab.setPadding(new Insets(15));
@@ -433,6 +475,11 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         return tab;
     }
 
+    /**
+     *Crea una pestaña que permite a los usuarios interactuar con las reseñas de canciones.
+     *
+     * @return Una pestaña configurada para gestionar reseñas.
+     */
     private Tab createReviewsTab() {
         VBox reviewsTab = new VBox(15);
         reviewsTab.setPadding(new Insets(15));
@@ -477,6 +524,16 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         return tab;
     }
 
+    /**
+     * Inicializa la tabla de reseñas de canciones con las columnas y datos necesarios.
+     * Esta tabla muestra información detallada sobre las reseñas de canciones,
+     * incluyendo ID, nombre de la canción, usuario que reseñó, texto de la reseña,
+     * rating, votos útiles y no útiles, y fecha de creación.
+     * Además, incluye botones para votar "útil" o "no útil" en cada reseña.
+     * Esta tabla se utiliza para mostrar las reseñas de canciones
+     * y permitir a los usuarios interactuar con ellas mediante votos.
+     *
+     */
     private void initializeSongReviewsTable() {
         TableColumn<ReviewManager.Review, Number> idCol = new TableColumn<>("ID");
         idCol.setCellValueFactory(cd -> new SimpleIntegerProperty(cd.getValue().id));
@@ -555,6 +612,9 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         refreshSongReviewsTable();
     }
 
+    /**
+     * Configura el callback de Spotify para manejar la autenticación y el acceso a la API.
+     */
     private void configureSpotifyCallback() {
         Spark.get("/callback", (req, res) -> {
             String authCode = req.queryParams("code");
@@ -601,6 +661,9 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         });
     }
 
+    /**
+     * Inicia el proceso de inicio de sesión en Spotify.
+     */
     private void triggerSpotifyLogin() {
         try {
             SpotifyToken token = SpotifyToken.getValidToken();
@@ -653,6 +716,12 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         }
     }
 
+    /**
+     * Muestra las canciones principales del usuario autenticado.
+     *
+     * @param accessToken El token de acceso de Spotify.
+     * @throws IOException Si ocurre un error al obtener los datos.
+     */
     private void displayTopTracks(String accessToken) throws IOException {
         try {
             String topTracksJson = SpotifyClient.getTopTracks(accessToken);
@@ -680,6 +749,12 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         }
     }
 
+    /**
+     * Muestra los artistas principales del usuario autenticado.
+     *
+     * @param accessToken El token de acceso de Spotify.
+     * @throws IOException Si ocurre un error al obtener los datos.
+     */
     private void displayTopArtists(String accessToken) throws IOException {
         try {
             String topArtistsJson = SpotifyClient.getTopArtists(accessToken);
@@ -699,6 +774,13 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         }
     }
 
+    /**
+     * Obtiene un token de acceso válido para Spotify.
+     *
+     * @return El token de acceso válido.
+     * @throws SQLException Si ocurre un error al acceder a la base de datos.
+     * @throws IOException Si ocurre un error al obtener el token.
+     */
     private String getValidAccessToken() throws SQLException, IOException {
         SpotifyToken token = SpotifyToken.getValidToken();
         if (token == null) {
@@ -709,17 +791,29 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         return token.getAccessToken();
     }
 
+    /**
+     * Método llamado cuando un voto se registra exitosamente.
+     */
     @Override
     public void onVoteSuccess() {
         refreshSongReviewsTable();
         showAlert("Éxito", "Tu voto se registró correctamente");
     }
 
+    /**
+     * Método llamado cuando un voto no se puede registrar.
+     *
+     * @param errorMessage El mensaje de error asociado.
+     */
     @Override
     public void onVoteFailure(String errorMessage) {
         showAlert("Error", "No se pudo registrar el voto: " + errorMessage);
     }
 
+    /**
+     * Muestra un diálogo para buscar reseñas por canción.
+     * Permite al usuario ingresar el nombre de la canción y muestra las reseñas correspondientes.
+     */
     private void refreshSongReviewsTable() {
         try {
             reviewsData.setAll(ReviewManager.getAllSongReviews());
@@ -728,6 +822,12 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         }
     }
 
+    /**
+     * Muestra un cuadro de diálogo de alerta con el mensaje proporcionado.
+     *
+     * @param title El título de la alerta.
+     * @param message El mensaje de la alerta.
+     */
     private void showAlert(String title, String message) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.INFORMATION);
@@ -738,6 +838,10 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         });
     }
 
+    /**
+     * Muestra un diálogo para buscar reseñas por canción.
+     * Permite al usuario ingresar el nombre de la canción y muestra las reseñas correspondientes.
+     */
     private void leaveReviewDialog() {
         if (currentReviewUser == null && !isAdminMode) {
             showAlert("Error", "Debes iniciar sesión como usuario de reseñas.");
@@ -896,6 +1000,16 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         });
     }
 
+    /**
+     * Muestra un diálogo para dejar una reseña de una canción.
+     * Permite al usuario ingresar el ID de la canción, el nombre y la reseña.
+     * Si se proporciona un ID de canción, se busca en Spotify para obtener más información.
+     *
+     * @param trackId ID de la canción (opcional)
+     * @param trackName Nombre de la canción
+     * @param reviewUser Usuario que deja la reseña
+     * @param albumCover URL de la portada del álbum (opcional)
+     */
     private void showReviewDialog(String trackId, String trackName, ReviewUserManager.ReviewUser reviewUser, String albumCover) {
         Platform.runLater(() -> {
             Dialog<Pair<String, Integer>> reviewDialog = new Dialog<>();
@@ -957,6 +1071,10 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         });
     }
 
+    /**
+     * Muestra un diálogo para buscar reseñas por nombre de canción.
+     * Si el usuario no ha iniciado sesión, solicita que inicie sesión con Spotify.
+     */
     private void searchReviewsDialog() {
         TextInputDialog dialog = new TextInputDialog();
         dialog.setTitle("Buscar reseñas");
@@ -996,6 +1114,9 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         });
     }
 
+    /**
+     * Muestra las reseñas más populares
+     */
     private void showTrendingReviews() {
         new Thread(() -> {
             try {
@@ -1011,6 +1132,10 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         }).start();
     }
 
+    /**
+     * Método para cerrar la aplicación y volver a la selección de usuario.
+     * Este método cierra la ventana actual y lanza una nueva instancia de OrpheusTUI.
+     */
     public void volverASeleccionUsuario() {
         primaryStage.close();
         Platform.runLater(() -> {
@@ -1022,6 +1147,12 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
         });
     }
 
+    /**
+     * Método para manejar el inicio de sesión como administrador.
+     * Este método solicita la contraseña de administrador y, si es correcta,
+     * cambia el modo de la aplicación a administrador.
+     * Si la contraseña es incorrecta, se muestra un mensaje de error y se cierra la aplicación.
+     */
     private void handleAdminLogin() {
         TextInputDialog passwordDialog = new TextInputDialog();
         passwordDialog.setTitle("Autenticación de Admin");

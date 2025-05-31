@@ -3,31 +3,57 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.sql.*;
-import javafx.application.Platform;
-import javafx.scene.control.Alert;
 
+/**
+ * La clase `ReviewUserManager` gestiona las operaciones relacionadas con los usuarios
+ * que dejan reseñas en la aplicación, incluyendo usuarios normales y premium.
+ * Proporciona métodos para registrar, iniciar sesión, eliminar y exportar usuarios.
+ *
+ * Funcionalidades principales:
+ * <ul>
+ *   <li>Registro e inicio de sesión de usuarios normales y premium</li>
+ *   <li>Eliminación de usuarios</li>
+ *   <li>Exportación de usuarios a un archivo CSV</li>
+ *   <li>Gestión de usuarios en la base de datos</li>
+ * </ul>
+ *
+ * @author Elismoud
+ * @version 1.0
+ * @since 2024-06-01
+ */
 public class ReviewUserManager {
     private static final String DB_URL = "jdbc:postgresql://localhost:5433/reviews_db";
     private static final String DB_USER = "orpheusers";
     private static final String DB_PASSWORD = "munyun214";
 
+    /**
+     * Clase interna que representa un usuario de reseñas.
+     * Contiene el ID y el nombre de usuario.
+     */
     public static class ReviewUser {
         public final int id;
         public final String username;
 
+        /**
+         * Constructor de la clase `ReviewUser`.
+         *
+         * @param id El ID del usuario.
+         * @param username El nombre de usuario.
+         */
         public ReviewUser(int id, String username) {
             this.id = id;
             this.username = username;
         }
     }
 
-//    public static void showAlert(String title, String message) {
-//        Alert alert = new Alert(Alert.AlertType.ERROR);
-//        alert.setTitle(title);
-//        alert.setContentText(message);
-//        alert.showAndWait();
-//    }
-
+    /**
+     * Registra un nuevo usuario normal en la base de datos.
+     *
+     * @param username El nombre de usuario.
+     * @param password La contraseña del usuario.
+     * @return Un objeto `ReviewUser` que representa al usuario registrado.
+     * @throws SQLException Si ocurre un error al registrar el usuario.
+     */
     public static ReviewUser registerUser(String username, String password) throws SQLException {
         String sql = "INSERT INTO review_users (username, password_hash) VALUES (?, ?) RETURNING id";
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
@@ -48,6 +74,14 @@ public class ReviewUserManager {
         }
     }
 
+    /**
+     * Inicia sesión como un usuario normal.
+     *
+     * @param username El nombre de usuario.
+     * @param password La contraseña del usuario.
+     * @return Un objeto `ReviewUser` que representa al usuario autenticado.
+     * @throws SQLException Si ocurre un error al iniciar sesión.
+     */
     public static ReviewUser loginUser(String username, String password) throws SQLException {
         String sql = "SELECT id, username, password_hash, is_premium FROM review_users WHERE username = ?";
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
@@ -68,6 +102,14 @@ public class ReviewUserManager {
         }
     }
 
+    /**
+     * Inicia sesión como un usuario premium.
+     *
+     * @param username El nombre de usuario.
+     * @param password La contraseña del usuario.
+     * @return Un objeto `ReviewUser` que representa al usuario premium autenticado.
+     * @throws SQLException Si ocurre un error al iniciar sesión.
+     */
     public static ReviewUser loginPremiumUser(String username, String password) throws SQLException {
         String sql = "SELECT id, username, password_hash, is_premium FROM review_users WHERE username = ?";
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
@@ -88,6 +130,13 @@ public class ReviewUserManager {
         }
     }
 
+    /**
+     * Obtiene un usuario por su nombre de usuario.
+     *
+     * @param username El nombre de usuario.
+     * @return Un objeto `ReviewUser` si el usuario existe, o `null` si no existe.
+     * @throws SQLException Si ocurre un error al buscar el usuario.
+     */
     public static ReviewUser getUserByUsername(String username) throws SQLException {
         String sql = "SELECT id, username FROM review_users WHERE username = ?";
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
@@ -101,14 +150,31 @@ public class ReviewUserManager {
         }
     }
 
+    /**
+     * Elimina todos los usuarios de la base de datos.
+     *
+     * @throws SQLException Si ocurre un error al eliminar los usuarios.
+     */
     public static void clearUsers() throws SQLException {
-        String sql = "DELETE FROM review_users";
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.executeUpdate();
+        String sqlClearPremium = "DELETE FROM premium_users";
+        String sqlClearReview = "DELETE FROM review_users";
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD)) {
+            try (PreparedStatement stmtPremium = conn.prepareStatement(sqlClearPremium)) {
+                stmtPremium.executeUpdate();
+            }
+            try (PreparedStatement stmtReview = conn.prepareStatement(sqlClearReview)) {
+                stmtReview.executeUpdate();
+            }
         }
     }
 
+    /**
+     * Exporta los usuarios a un archivo CSV.
+     *
+     * @param file El archivo donde se exportarán los usuarios.
+     * @throws SQLException Si ocurre un error al acceder a la base de datos.
+     * @throws IOException Si ocurre un error al escribir en el archivo.
+     */
     public static void exportUsersToCsv(File file) throws SQLException, IOException {
         String sql = "SELECT id, username, created_at FROM review_users ORDER BY created_at";
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
@@ -134,6 +200,12 @@ public class ReviewUserManager {
         return value;
     }
 
+    /**
+     * Elimina un usuario por su nombre de usuario.
+     *
+     * @param username El nombre de usuario.
+     * @throws SQLException Si ocurre un error al eliminar el usuario.
+     */
     public static void deleteUser(String username) throws SQLException {
         // Eliminar de premium_users primero (si existe)
         String sqlDeletePremium = "DELETE FROM premium_users WHERE username = ?";
@@ -155,6 +227,14 @@ public class ReviewUserManager {
         }
     }
 
+    /**
+     * Registra un nuevo usuario premium en la base de datos.
+     *
+     * @param username El nombre de usuario.
+     * @param password La contraseña del usuario.
+     * @return Un objeto `ReviewUser` que representa al usuario premium registrado.
+     * @throws SQLException Si ocurre un error al registrar el usuario.
+     */
     public static ReviewUser registerPremiumUser(String username, String password) throws SQLException {
         // Primero, insertar en premium_users
         String sqlPremium = "INSERT INTO premium_users (username, password_hash) VALUES (?, ?) RETURNING id";
@@ -193,6 +273,13 @@ public class ReviewUserManager {
         }
     }
 
+    /**
+     * Elimina un usuario premium por su nombre de usuario y contraseña.
+     *
+     * @param username El nombre de usuario.
+     * @param password La contraseña del usuario.
+     * @throws SQLException Si ocurre un error al eliminar el usuario.
+     */
     public static void deletePremiumUser(String username, String password) throws SQLException {
         String sqlSelect = "SELECT password_hash FROM review_users WHERE username = ?";
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);

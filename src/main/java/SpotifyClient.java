@@ -9,6 +9,24 @@ import java.util.Base64;
 import java.util.List;
 import okhttp3.*;
 
+/**
+ * La clase `SpotifyClient` proporciona métodos para interactuar con la API de Spotify.
+ * Permite realizar autenticación, obtener información del usuario, buscar canciones y álbumes,
+ * y gestionar la biblioteca del usuario.
+ *
+ * Funcionalidades principales:
+ * <ul>
+ *   <li>Autenticación y obtención de tokens de acceso</li>
+ *   <li>Consulta de información del perfil del usuario</li>
+ *   <li>Búsqueda de canciones y álbumes</li>
+ *   <li>Gestión de la biblioteca del usuario (añadir canciones y álbumes)</li>
+ *   <li>Obtención de información de canciones y álbumes</li>
+ * </ul>
+ *
+ * @author al
+ * @version 1.0
+ * @since 2024-06-01
+ */
 public class SpotifyClient {
     public static final String CLIENT_ID = "0e003a2eb0a7493c86917c5bc3eb5297";
     private static final String CLIENT_SECRET = "70e4f66551b84356aad1105e620e6933";
@@ -17,6 +35,10 @@ public class SpotifyClient {
     private static final String AUTH_URL = "https://accounts.spotify.com/api/token";
     private static final OkHttpClient client = configureClientWithSystemProxy();
 
+    /**
+     * Configura un cliente OkHttp con proxy del sistema si está disponible.
+     * Si las variables de entorno PROXY_USER y PROXY_PASS están defindas
+     * */
     public static OkHttpClient configureClientWithSystemProxy() {
         OkHttpClient.Builder builder = new OkHttpClient.Builder();
         String proxyUser = System.getenv("PROXY_USER");
@@ -44,6 +66,12 @@ public class SpotifyClient {
         return builder.build();
     }
 
+    /**
+     * Verifica si hay conexión a Internet intentando conectarse a varios endpoints confiables.
+     * Si se puede conectar a cualquiera de ellos, se considera que hay conexión a Internet.
+     *
+     * @return true si hay conexión a Internet, false en caso contrario.
+     */
     public static boolean isInternetAvailable() {
         String[] reliableEndpoints = {
                 "https://www.google.com",
@@ -72,6 +100,13 @@ public class SpotifyClient {
         return false;
     }
 
+    /**
+     * Obtiene la respuesta del token de acceso utilizando un código de autorización.
+     *
+     * @param authCode El código de autorización obtenido del flujo de autenticación.
+     * @return Un objeto JsonObject que contiene la respuesta del token.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static com.google.gson.JsonObject getTokenResponse(String authCode) throws IOException {
         String credentials = CLIENT_ID + ":" + CLIENT_SECRET;
         String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
@@ -120,6 +155,13 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Refresca el token de acceso utilizando un token de actualización.
+     *
+     * @param refreshToken El token de actualización obtenido previamente.
+     * @return Un nuevo token de acceso.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static String refreshAccessToken(String refreshToken) throws IOException {
         String credentials = CLIENT_ID + ":" + CLIENT_SECRET;
         String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
@@ -149,6 +191,13 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Obtiene el perfil del usuario autenticado en formato JSON.
+     *
+     * @param accessToken El token de acceso del usuario.
+     * @return Un String con la información del perfil del usuario en formato JSON.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static String getUserProfileJson(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/me")
@@ -162,6 +211,14 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Obtiene el nombre de visualización del usuario autenticado.
+     * Si el nombre de visualización no está disponible, se utiliza el ID del usuario.
+     *
+     * @param accessToken El token de acceso del usuario.
+     * @return El nombre de visualización del usuario.
+     * @throws IOException Si ocurre un error al obtener el perfil del usuario.
+     */
     public static String getUserDisplayName(String accessToken) throws IOException {
         String json = getUserProfileJson(accessToken);
         JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
@@ -170,6 +227,13 @@ public class SpotifyClient {
                 : obj.get("id").getAsString();
     }
 
+    /**
+     * Obtiene el ID del usuario autenticado.
+     *
+     * @param accessToken El token de acceso del usuario.
+     * @return El ID del usuario.
+     * @throws IOException Si ocurre un error al obtener el perfil del usuario.
+     */
     public static String getTopTracks(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/me/top/tracks?limit=10")
@@ -183,6 +247,13 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Obtiene los artistas más escuchados del usuario autenticado.
+     *
+     * @param accessToken El token de acceso del usuario.
+     * @return Un String con la información de los artistas más escuchados en formato JSON.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static String getTopArtists(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/me/top/artists?limit=10")
@@ -196,6 +267,13 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Obtiene las pistas reproducidas recientemente por el usuario autenticado.
+     *
+     * @param accessToken El token de acceso del usuario.
+     * @return Un String con la información de las pistas reproducidas recientemente en formato JSON.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static String getRecentlyPlayedTracks(String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/me/player/recently-played?limit=10")
@@ -209,6 +287,14 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Busca un ID de pista por su nombre.
+     *
+     * @param query El nombre de la pista a buscar.
+     * @param accessToken El token de acceso del usuario.
+     * @return El ID de la pista encontrada.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static String searchTrackIdByName(String query, String accessToken) throws IOException {
         String encodedQuery = java.net.URLEncoder.encode(query, StandardCharsets.UTF_8);
         String url = API_BASE_URL + "/search?q=" + encodedQuery + "&type=track&limit=1";
@@ -232,6 +318,14 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Busca un ID de álbum por su nombre.
+     *
+     * @param albumName El nombre del álbum a buscar.
+     * @param accessToken El token de acceso del usuario.
+     * @return El ID del álbum encontrado.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static String searchAlbumIdByName(String albumName, String accessToken) throws IOException {
         String url = API_BASE_URL + "/search?q=" + URLEncoder.encode(albumName, StandardCharsets.UTF_8) + "&type=album&limit=1";
         Request request = new Request.Builder()
@@ -252,6 +346,13 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Añade una pista a la biblioteca del usuario.
+     *
+     * @param trackId El ID de la pista a añadir.
+     * @param accessToken El token de acceso del usuario.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static void addTrackToLibrary(String trackId, String accessToken) throws IOException {
         RequestBody body = RequestBody.create("", null);
         Request request = new Request.Builder()
@@ -266,6 +367,13 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Añade un álbum a la biblioteca del usuario.
+     *
+     * @param albumId El ID del álbum a añadir.
+     * @param accessToken El token de acceso del usuario.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static void addAlbumToLibrary(String albumId, String accessToken) throws IOException {
         String url = API_BASE_URL + "/me/albums?ids=" + albumId;
         Request request = new Request.Builder()
@@ -280,6 +388,14 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Obtiene información detallada de una pista por su ID.
+     *
+     * @param trackId El ID de la pista.
+     * @param accessToken El token de acceso del usuario.
+     * @return Un objeto JsonObject con la información de la pista.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static JsonObject getTrackInfo(String trackId, String accessToken) throws IOException {
         Request request = new Request.Builder()
                 .url(API_BASE_URL + "/tracks/" + trackId)
@@ -293,6 +409,14 @@ public class SpotifyClient {
         }
     }
 
+    /**
+     * Obtiene la URL de la carátula del álbum de una pista por su ID.
+     *
+     * @param trackId El ID de la pista.
+     * @param accessToken El token de acceso del usuario.
+     * @return La URL de la carátula del álbum, o null si no se encuentra.
+     * @throws IOException Si ocurre un error al realizar la solicitud HTTP.
+     */
     public static String getAlbumCoverUrl(String trackId, String accessToken) throws IOException {
         JsonObject track = getTrackInfo(trackId, accessToken);
         JsonArray images = track.getAsJsonObject("album").getAsJsonArray("images");
@@ -301,10 +425,4 @@ public class SpotifyClient {
         }
         return null;
     }
-
-//    public static String getUserIdFromToken(String accessToken) throws IOException {
-//        String userProfileJson = getUserProfileJson(accessToken);
-//        org.json.JSONObject userProfile = new org.json.JSONObject(userProfileJson);
-//        return userProfile.getString("id");
-//    }
 }

@@ -1,5 +1,3 @@
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.sql.*;
 
@@ -109,5 +107,4 @@ public class SpotifyToken {
     public static void clear() throws SQLException {
         dataStore.deleteAccessToken();
     }
-
 }
