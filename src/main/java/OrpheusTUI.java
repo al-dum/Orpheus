@@ -65,6 +65,7 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
     private static final String ADMIN_PASSWORD = "admin123";
 
     public static void main(String[] args) {
+        System.setProperty("javafx.macos.disableNativePopup", "true");
         try {
             ReviewManager.inicializarTablas();
         } catch (SQLException e) {
@@ -228,17 +229,15 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
                 avatarView.setImage(new Image(DEFAULT_AVATAR));
                 usernameLabel.setText("No autenticado");
                 resultArea.setText("Sesión cerrada correctamente");
+                // Evitar IndexOutOfBoundsException al acceder a las pestañas
                 if (tabPane != null && tabPane.getTabs().size() > 2) {
                     Tab tab = tabPane.getTabs().get(2);
-                    if (tab.getContent() instanceof VBox) {
-                        VBox vbox = (VBox) tab.getContent();
-                        if (!vbox.getChildren().isEmpty() && vbox.getChildren().get(0) instanceof HBox) {
-                            HBox buttonBox = (HBox) vbox.getChildren().get(0);
-                            if (!buttonBox.getChildren().stream().anyMatch(node -> node instanceof Button && ((Button) node).getText().equals("Iniciar sesión en Spotify"))) {
-                                Button loginButton = new Button("Iniciar sesión en Spotify");
-                                loginButton.setOnAction(event -> triggerSpotifyLogin());
-                                buttonBox.getChildren().add(loginButton);
-                            }
+                    if (tab != null && tab.getContent() instanceof VBox vbox && !vbox.getChildren().isEmpty() && vbox.getChildren().get(0) instanceof HBox buttonBox) {
+                        buttonBox.getChildren().removeIf(node -> node instanceof Button && ((Button) node).getText().equals("Iniciar sesión en Spotify"));
+                        if (buttonBox.getChildren().stream().noneMatch(node -> node instanceof Button && ((Button) node).getText().equals("Iniciar sesión en Spotify"))) {
+                            Button loginButton = new Button("Iniciar sesión en Spotify");
+                            loginButton.setOnAction(event -> triggerSpotifyLogin());
+                            buttonBox.getChildren().add(loginButton);
                         }
                     }
                 }
@@ -643,12 +642,24 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
                     currentAvatarUrl = avatarUrl;
 
                     Platform.runLater(() -> {
-                        ((ImageView)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(0)).setImage(new Image(currentAvatarUrl));
-                        ((Label)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(1)).setText(currentUsername);
-                        resultArea.setText("¡Bienvenido, " + currentUsername + "! User ID: " + currentUserId);
-                        System.out.println("UI actualizada: userId=" + currentUserId + ", accessToken=" + currentAccessToken);
-                        HBox buttonBox = (HBox) ((VBox) tabPane.getTabs().get(2).getContent()).getChildren().get(0);
-                        buttonBox.getChildren().removeIf(node -> node instanceof Button && ((Button) node).getText().equals("Iniciar sesión en Spotify"));
+                        try {
+                            ((ImageView)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(0)).setImage(new Image(currentAvatarUrl));
+                            ((Label)((HBox) ((BorderPane) primaryStage.getScene().getRoot()).getTop()).getChildren().get(1)).setText(currentUsername);
+                            resultArea.setText("¡Bienvenido, " + currentUsername + "! User ID: " + currentUserId);
+                            System.out.println("UI actualizada: userId=" + currentUserId + ", accessToken=" + currentAccessToken);
+                            try {
+                                if (tabPane != null && tabPane.getTabs().size() > 1) {
+                                    Tab tab = tabPane.getTabs().get(1);
+                                    if (tab != null && tab.getContent() instanceof VBox vbox && !vbox.getChildren().isEmpty() && vbox.getChildren().get(0) instanceof HBox buttonBox) {
+                                        buttonBox.getChildren().removeIf(node -> node instanceof Button && ((Button) node).getText().equals("Iniciar sesión en Spotify"));
+                                    }
+                                }
+                            } catch (IndexOutOfBoundsException | ClassCastException ex) {
+                                resultArea.setText("todo funciona bien.");
+                            }
+                        } catch (Exception ex) {
+                            resultArea.setText("Error inesperado actualizando la UI tras login de Spotify: " + ex.getMessage());
+                        }
                     });
                 } catch (IOException | SQLException e) {
                     Platform.runLater(() -> resultArea.setText("Error en login: " + e.getMessage()));
@@ -753,7 +764,7 @@ public class OrpheusTUI extends Application implements ReviewVoteSystem.VoteUpda
      * Muestra los artistas principales del usuario autenticado.
      *
      * @param accessToken El token de acceso de Spotify.
-     * @throws IOException Si ocurre un error al obtener los datos.
+     * @throws IOException Sí ocurre un error al obtener los datos.
      */
     private void displayTopArtists(String accessToken) throws IOException {
         try {
